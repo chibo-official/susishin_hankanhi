@@ -1,0 +1,3986 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>販管費管理｜営業推進本部</title>
+<meta name="description" content="千房ホールディングス株式会社 営業推進本部 販管費管理アプリ" />
+
+<!-- Tailwind CSS (Play CDN) -->
+<script src="https://cdn.tailwindcss.com"></script>
+
+<!-- React / ReactDOM （UMDビルド） -->
+<script src="https://unpkg.com/react-is@18.3.1/umd/react-is.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/prop-types@15.8.1/prop-types.min.js" crossorigin></script>
+<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin></script>
+
+<!-- グラフ描画 -->
+<script src="https://unpkg.com/recharts@2.12.7/umd/Recharts.js" crossorigin></script>
+
+<!-- ファイル解析（Excel / CSV） -->
+<script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js" crossorigin></script>
+<script src="https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js" crossorigin></script>
+
+<style>
+  html, body { height: 100%; }
+  body { margin: 0; background: #F7F3EA; }
+  #root { min-height: 100vh; }
+  .boot-loading {
+    display: flex; align-items: center; justify-content: center;
+    height: 100vh; font-family: 'Helvetica Neue', Arial, sans-serif;
+    color: #766E62; font-size: 14px;
+  }
+</style>
+</head>
+<body>
+<div id="root">
+  <div class="boot-loading">読み込み中…</div>
+</div>
+
+<!-- アプリ本体（JSXはビルド時にプレーンJSへ変換済み。ブラウザでの再コンパイル不要） -->
+<script>
+/* ==================================================================== */
+/*  千房ホールディングス 営業推進本部 販管費管理アプリ                    */
+/*  スタンドアロンWebアプリ版（React/ReactDOM/Recharts/XLSX/PapaParse    */
+/*  はすべてCDN経由のUMDビルドを使用。ビルドステップ不要・単一HTMLで動作） */
+/* ==================================================================== */
+
+const {
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+  useRef
+} = React;
+const {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  LineChart,
+  Line,
+  ReferenceLine,
+  Cell
+} = Recharts;
+
+/* ------------------------------------------------------------------ */
+/*  アイコン（lucide-reactの代わりに軽量インラインSVGで再現）           */
+/* ------------------------------------------------------------------ */
+
+function makeIcon(paths, viewBox = "0 0 24 24") {
+  return function Icon({
+    size = 16,
+    color,
+    className,
+    style
+  }) {
+    return /*#__PURE__*/React.createElement("svg", {
+      width: size,
+      height: size,
+      viewBox: viewBox,
+      fill: "none",
+      stroke: color || "currentColor",
+      strokeWidth: "2",
+      strokeLinecap: "round",
+      strokeLinejoin: "round",
+      className: className,
+      style: style
+    }, paths);
+  };
+}
+const LayoutDashboard = makeIcon(/*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("rect", {
+  x: "3",
+  y: "3",
+  width: "7",
+  height: "9",
+  rx: "1"
+}), /*#__PURE__*/React.createElement("rect", {
+  x: "14",
+  y: "3",
+  width: "7",
+  height: "5",
+  rx: "1"
+}), /*#__PURE__*/React.createElement("rect", {
+  x: "14",
+  y: "12",
+  width: "7",
+  height: "9",
+  rx: "1"
+}), /*#__PURE__*/React.createElement("rect", {
+  x: "3",
+  y: "16",
+  width: "7",
+  height: "5",
+  rx: "1"
+})));
+const Table2 = makeIcon(/*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("path", {
+  d: "M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"
+}), /*#__PURE__*/React.createElement("path", {
+  d: "M3 9h18"
+}), /*#__PURE__*/React.createElement("path", {
+  d: "M3 15h18"
+}), /*#__PURE__*/React.createElement("path", {
+  d: "M9 3v18"
+})));
+const UploadCloud = makeIcon(/*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("path", {
+  d: "M16 16l-4-4-4 4"
+}), /*#__PURE__*/React.createElement("path", {
+  d: "M12 12v9"
+}), /*#__PURE__*/React.createElement("path", {
+  d: "M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"
+})));
+const FileSpreadsheet = makeIcon(/*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("path", {
+  d: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"
+}), /*#__PURE__*/React.createElement("path", {
+  d: "M14 2v6h6"
+}), /*#__PURE__*/React.createElement("path", {
+  d: "M8 13h2"
+}), /*#__PURE__*/React.createElement("path", {
+  d: "M14 13h2"
+}), /*#__PURE__*/React.createElement("path", {
+  d: "M8 17h2"
+}), /*#__PURE__*/React.createElement("path", {
+  d: "M14 17h2"
+})));
+const FileText = makeIcon(/*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("path", {
+  d: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"
+}), /*#__PURE__*/React.createElement("path", {
+  d: "M14 2v6h6"
+}), /*#__PURE__*/React.createElement("path", {
+  d: "M9 13h6"
+}), /*#__PURE__*/React.createElement("path", {
+  d: "M9 17h6"
+})));
+const ChevronRight = makeIcon(/*#__PURE__*/React.createElement("path", {
+  d: "M9 18l6-6-6-6"
+}));
+const ChevronDown = makeIcon(/*#__PURE__*/React.createElement("path", {
+  d: "M6 9l6 6 6-6"
+}));
+const Download = makeIcon(/*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("path", {
+  d: "M12 3v12"
+}), /*#__PURE__*/React.createElement("path", {
+  d: "M7 10l5 5 5-5"
+}), /*#__PURE__*/React.createElement("path", {
+  d: "M4 21h16"
+})));
+const CheckCircle2 = makeIcon(/*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("circle", {
+  cx: "12",
+  cy: "12",
+  r: "9"
+}), /*#__PURE__*/React.createElement("path", {
+  d: "M9 12l2 2 4-4"
+})));
+const AlertTriangle = makeIcon(/*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("path", {
+  d: "M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"
+}), /*#__PURE__*/React.createElement("path", {
+  d: "M12 9v4"
+}), /*#__PURE__*/React.createElement("path", {
+  d: "M12 17h.01"
+})));
+const TrendingUp = makeIcon(/*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("path", {
+  d: "M23 6l-9.5 9.5-5-5L1 18"
+}), /*#__PURE__*/React.createElement("path", {
+  d: "M17 6h6v6"
+})));
+const TrendingDown = makeIcon(/*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("path", {
+  d: "M23 18l-9.5-9.5-5 5L1 6"
+}), /*#__PURE__*/React.createElement("path", {
+  d: "M17 18h6v-6"
+})));
+const Loader2 = makeIcon(/*#__PURE__*/React.createElement("path", {
+  d: "M21 12a9 9 0 1 1-6.219-8.56"
+}));
+const X = makeIcon(/*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("path", {
+  d: "M18 6L6 18"
+}), /*#__PURE__*/React.createElement("path", {
+  d: "M6 6l12 12"
+})));
+const Scale = makeIcon(/*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("path", {
+  d: "M12 3v18"
+}), /*#__PURE__*/React.createElement("path", {
+  d: "M5 21h14"
+}), /*#__PURE__*/React.createElement("path", {
+  d: "M7 7l-4 8a4 4 0 0 0 8 0z"
+}), /*#__PURE__*/React.createElement("path", {
+  d: "M17 7l-4 8a4 4 0 0 0 8 0z"
+}), /*#__PURE__*/React.createElement("path", {
+  d: "M5 7h4"
+}), /*#__PURE__*/React.createElement("path", {
+  d: "M15 7h4"
+}), /*#__PURE__*/React.createElement("path", {
+  d: "M12 3l-3 4h6z"
+})));
+const Layers = makeIcon(/*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("path", {
+  d: "M12 2l9 5-9 5-9-5z"
+}), /*#__PURE__*/React.createElement("path", {
+  d: "M3 12l9 5 9-5"
+}), /*#__PURE__*/React.createElement("path", {
+  d: "M3 17l9 5 9-5"
+})));
+const ArrowUpRight = makeIcon(/*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("path", {
+  d: "M7 17L17 7"
+}), /*#__PURE__*/React.createElement("path", {
+  d: "M7 7h10v10"
+})));
+const ArrowDownRight = makeIcon(/*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("path", {
+  d: "M7 7l10 10"
+}), /*#__PURE__*/React.createElement("path", {
+  d: "M17 7v10H7"
+})));
+const Minus = makeIcon(/*#__PURE__*/React.createElement("path", {
+  d: "M5 12h14"
+}));
+
+/* ------------------------------------------------------------------ */
+/*  共有バックエンド設定（Google Apps Script）                          */
+/* ------------------------------------------------------------------ */
+/*
+ * デプロイ手順（gas-code.gs を参照）：
+ *   1. Googleスプレッドシートを新規作成
+ *   2. 拡張機能 > Apps Script を開き、gas-code.gs の内容を貼り付け
+ *   3. 「デプロイ」→「新しいデプロイ」→ 種類「ウェブアプリ」
+ *      - 実行するユーザー: 自分
+ *      - アクセスできるユーザー: 組織内の全員（または全員）
+ *   4. 発行されたウェブアプリURL（.../exec）を下記 GAS_ENDPOINT に設定
+ *
+ * 未設定（空文字）のままでもアプリは動作しますが、その場合は
+ * ブラウザのlocalStorageのみに保存され、他の端末とは共有されません。
+ */
+const GAS_ENDPOINT = "https://script.google.com/macros/s/AKfycbzsJAU1lqNkaTFf9NM4uNeTnq5mwrsZBEh8-eitr8RT8RQExJ3Ys8mBxW_qAUhZPT8X/exec"; // 営業推進本部 販管費管理DB（デプロイ済み）
+
+const REMOTE_KEY_PREFIX = "chibo-sgcost:"; // App本体の STORAGE_PREFIX と同じ値
+
+function isGasConfigured() {
+  return typeof GAS_ENDPOINT === "string" && GAS_ENDPOINT.trim().length > 0;
+}
+async function gasListAllMonths() {
+  const res = await fetch(`${GAS_ENDPOINT}?action=getAll`, {
+    method: "GET"
+  });
+  if (!res.ok) throw new Error("共有スプレッドシートからの取得に失敗しました（HTTP " + res.status + "）");
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
+  return data.months || {};
+}
+async function gasSaveMonth(yearMonthKey, payload) {
+  const res = await fetch(GAS_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "text/plain;charset=utf-8"
+    },
+    body: JSON.stringify({
+      action: "save",
+      key: yearMonthKey,
+      ...payload
+    })
+  });
+  if (!res.ok) throw new Error("共有スプレッドシートへの保存に失敗しました（HTTP " + res.status + "）");
+  const data = await res.json();
+  if (!data.ok) throw new Error(data.error || "共有スプレッドシートへの保存に失敗しました");
+  return data;
+}
+
+/* ------------------------------------------------------------------ */
+/*  window.storage シム                                                */
+/*  ・GAS_ENDPOINT設定時：Googleスプレッドシートを正とし、               */
+/*    localStorageは表示高速化のためのローカルキャッシュとして使用       */
+/*  ・GAS_ENDPOINT未設定時：localStorageのみで動作（この端末専用）       */
+/*  App本体（get/set/list）のインターフェースは変更していない            */
+/* ------------------------------------------------------------------ */
+
+(function installStorageShim() {
+  const LS_PREFIX = "chibo-sgcost-storage:";
+  let remoteAvailable = null; // null=未確認, true=接続成功, false=接続失敗
+
+  function fullKey(key, shared) {
+    return LS_PREFIX + (shared ? "shared:" : "local:") + key;
+  }
+  window.storage = {
+    getStatus() {
+      if (!isGasConfigured()) return "unconfigured";
+      if (remoteAvailable === true) return "connected";
+      if (remoteAvailable === false) return "local-only";
+      return "checking";
+    },
+    async get(key, shared = false) {
+      const raw = window.localStorage.getItem(fullKey(key, shared));
+      if (raw === null) return null;
+      return {
+        key,
+        value: raw,
+        shared
+      };
+    },
+    async set(key, value, shared = false) {
+      // 常にローカルキャッシュへ即時保存（オフライン時でも表示は即時反映される）
+      window.localStorage.setItem(fullKey(key, shared), value);
+      if (isGasConfigured() && !shared) {
+        const yearMonthKey = key.startsWith(REMOTE_KEY_PREFIX) ? key.slice(REMOTE_KEY_PREFIX.length) : key;
+        const payload = JSON.parse(value);
+        await gasSaveMonth(yearMonthKey, payload); // 失敗時はここで例外を投げる
+        remoteAvailable = true;
+      }
+      return {
+        key,
+        value,
+        shared
+      };
+    },
+    async delete(key, shared = false) {
+      const existed = window.localStorage.getItem(fullKey(key, shared)) !== null;
+      window.localStorage.removeItem(fullKey(key, shared));
+      return {
+        key,
+        deleted: existed,
+        shared
+      };
+    },
+    async list(prefix = "", shared = false) {
+      // 起動時：GAS設定があればスプレッドシートの内容でローカルキャッシュを更新
+      if (isGasConfigured() && !shared) {
+        try {
+          const months = await gasListAllMonths();
+          Object.keys(months).forEach(ym => {
+            window.localStorage.setItem(fullKey(REMOTE_KEY_PREFIX + ym, false), JSON.stringify(months[ym]));
+          });
+          remoteAvailable = true;
+        } catch (err) {
+          remoteAvailable = false;
+          console.warn("共有スプレッドシートへの接続に失敗しました。ローカルデータを表示します。", err);
+        }
+      } else if (!isGasConfigured()) {
+        remoteAvailable = false;
+      }
+      const searchPrefix = LS_PREFIX + (shared ? "shared:" : "local:") + prefix;
+      const stripLen = (LS_PREFIX + (shared ? "shared:" : "local:")).length;
+      const keys = [];
+      for (let i = 0; i < window.localStorage.length; i++) {
+        const k = window.localStorage.key(i);
+        if (k && k.startsWith(searchPrefix)) {
+          keys.push(k.slice(stripLen));
+        }
+      }
+      return {
+        keys,
+        prefix,
+        shared
+      };
+    }
+  };
+})();
+
+/* ------------------------------------------------------------------ */
+/*  定数 / ユーティリティ                                              */
+/* ------------------------------------------------------------------ */
+
+const STORAGE_PREFIX = "chibo-sgcost:";
+const pad2 = n => String(n).padStart(2, "0");
+const keyOf = (y, m) => `${y}-${pad2(m)}`;
+const monthLabel = (y, m) => `${y}年${m}月`;
+const shortMonthLabel = (y, m) => `${String(y).slice(2)}/${m}`;
+const yen = n => n === undefined || n === null ? "－" : Math.round(n).toLocaleString("ja-JP");
+
+// 既知の科目コード（並び順の基準。未知の科目は末尾にアルファベット順で追加）
+const KNOWN_ACCOUNT_CODES = {
+  寮費: "723",
+  支払手数料: "726",
+  旅費交通費: "728",
+  通信費: "729",
+  交際費: "730",
+  消耗品費: "731",
+  研究費: "735",
+  諸会費: "737",
+  採用教育費: "739"
+};
+function parseLedgerDate(raw) {
+  if (raw === null || raw === undefined || raw === "") return {
+    display: "",
+    iso: ""
+  };
+  if (typeof raw === "number") {
+    // Excelのシリアル日付（1899-12-30起点）をJSTの日付として解釈
+    const ms = Math.round((raw - 25569) * 86400 * 1000);
+    const d = new Date(ms);
+    const y = d.getUTCFullYear();
+    const m = pad2(d.getUTCMonth() + 1);
+    const day = pad2(d.getUTCDate());
+    return {
+      display: `${y}/${m}/${day}`,
+      iso: `${y}-${m}-${day}`
+    };
+  }
+  const s = String(raw).trim();
+  // 和暦表記（R08/06/30 など：令和=R, 平成=H, 昭和=S）
+  const eraMatch = s.match(/^([RHS])(\d{2})\/(\d{2})\/(\d{2})$/);
+  if (eraMatch) {
+    const eraOffset = {
+      R: 2018,
+      H: 1988,
+      S: 1925
+    }[eraMatch[1]] || 0;
+    const year = eraOffset + parseInt(eraMatch[2], 10);
+    return {
+      display: `${year}/${eraMatch[3]}/${eraMatch[4]}`,
+      iso: `${year}-${eraMatch[3]}-${eraMatch[4]}`
+    };
+  }
+  const plainMatch = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+  if (plainMatch) {
+    const [, y, m, d] = plainMatch;
+    return {
+      display: `${y}/${pad2(+m)}/${pad2(+d)}`,
+      iso: `${y}-${pad2(+m)}-${pad2(+d)}`
+    };
+  }
+  return {
+    display: s,
+    iso: ""
+  };
+}
+
+/* ---- 明細行の集計ロジック（元帳形式 → 科目別・細目別 月計 ＋ 個別取引明細） ---- */
+function aggregateRows(rows) {
+  const totals = {};
+  const detail = {};
+  const lines = {};
+  const codes = {};
+  let curAccount = null;
+  let curSub = null;
+  const toNum = v => {
+    if (typeof v === "number") return v;
+    const n = parseFloat(String(v ?? "0").replace(/,/g, ""));
+    return isNaN(n) ? 0 : n;
+  };
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i] || [];
+    const col0 = row[0];
+    const isHeader = col0 !== null && col0 !== undefined && String(col0).trim() !== "";
+    if (isHeader) {
+      const parts = String(col0).trim().split(/\s{2,}/);
+      if (parts.length >= 2) {
+        const m = parts[1].match(/^(\S+)\s+(.+)$/);
+        if (m) {
+          curAccount = m[2].trim();
+          codes[curAccount] = m[1];
+        } else {
+          curAccount = parts[1].trim();
+        }
+      }
+      if (parts.length >= 3) {
+        const m2 = parts[2].match(/^(\S+)\s+(.+)$/);
+        curSub = m2 ? m2[2].trim() : parts[2].trim();
+      } else {
+        curSub = "その他";
+      }
+      lines[curAccount] = lines[curAccount] || {};
+      lines[curAccount][curSub] = lines[curAccount][curSub] || [];
+    } else {
+      const summary = row[6];
+      if (summary === "※※月計※※" && curAccount) {
+        const val = toNum(row[9]) - toNum(row[10]);
+        totals[curAccount] = (totals[curAccount] || 0) + val;
+        detail[curAccount] = detail[curAccount] || {};
+        const subKey = curSub || "その他";
+        detail[curAccount][subKey] = (detail[curAccount][subKey] || 0) + val;
+      } else if (summary && summary !== "前月より繰越" && curAccount) {
+        // 個別取引明細（伝票日付・摘要・金額）
+        const debit = toNum(row[9]);
+        const credit = toNum(row[10]);
+        const {
+          display,
+          iso
+        } = parseLedgerDate(row[3]);
+        const subKey = curSub || "その他";
+        lines[curAccount] = lines[curAccount] || {};
+        lines[curAccount][subKey] = lines[curAccount][subKey] || [];
+        lines[curAccount][subKey].push({
+          date: display,
+          dateIso: iso,
+          desc: String(summary),
+          debit,
+          credit,
+          amount: debit - credit
+        });
+      }
+    }
+  }
+  return {
+    totals,
+    detail,
+    lines,
+    codes
+  };
+}
+function parseFilenameYearMonth(name) {
+  const m = name.match(/(20\d{2})\D{1,3}(\d{1,2})\D/);
+  if (m) {
+    const year = parseInt(m[1], 10);
+    const month = parseInt(m[2], 10);
+    if (month >= 1 && month <= 12) return {
+      year,
+      month
+    };
+  }
+  return null;
+}
+async function readXlsxRows(file) {
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf, {
+    type: "array"
+  });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  return XLSX.utils.sheet_to_json(ws, {
+    header: 1,
+    raw: true,
+    defval: null
+  });
+}
+async function readCsvRows(file) {
+  const buf = await file.arrayBuffer();
+  let text;
+  try {
+    text = new TextDecoder("shift_jis").decode(buf);
+  } catch {
+    text = new TextDecoder("utf-8").decode(buf);
+  }
+  const parsed = Papa.parse(text, {
+    skipEmptyLines: false
+  });
+  return parsed.data;
+}
+function csvEscape(v) {
+  const s = String(v);
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+function downloadCsv(filename, rows) {
+  const content = "\uFEFF" + rows.map(r => r.map(csvEscape).join(",")).join("\r\n");
+  const blob = new Blob([content], {
+    type: "text/csv;charset=utf-8;"
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/* ------------------------------------------------------------------ */
+/*  シードデータ（アップロード済み4ヶ月分：2026年4〜7月）              */
+/* ------------------------------------------------------------------ */
+
+const SEED_DATA = {
+  "2026-04": {
+    "year": 2026,
+    "month": 4,
+    "sourceFile": "2026_4_営業推進本部_販管費.xlsx",
+    "totals": {
+      "寮費": 77000,
+      "支払手数料": 5162,
+      "旅費交通費": 108757,
+      "通信費": 36134
+    },
+    "detail": {
+      "寮費": {
+        "連結": 77000
+      },
+      "支払手数料": {
+        "その他手数料・課税": 1839,
+        "その他手数料・不課税": 3323
+      },
+      "旅費交通費": {
+        "旅費交通費": 10111,
+        "通勤手当": 98646
+      },
+      "通信費": {
+        "電話": 9733,
+        "郵便切手": 3910,
+        "ＩＴ関連": 22491
+      }
+    },
+    "lines": {
+      "寮費": {
+        "連結": [{
+          "date": "2026/04/30",
+          "desc": "千房㈱　㈱レオパレス21　寮費　5月分　レオパレスレオネクスト日新大阪403　(営業推進本部)",
+          "amount": 71000
+        }, {
+          "date": "2026/04/30",
+          "desc": "千房㈱　㈱レオパレス21　共益費　5月分　レオパレスレオネクスト日新大阪403　(営業推進本部)",
+          "amount": 5500
+        }, {
+          "date": "2026/04/30",
+          "desc": "千房㈱　㈱レオパレス21　環境維持費　5月分　レオパレスレオネクスト日新大阪403　(営業推進本部)",
+          "amount": 550
+        }, {
+          "date": "2026/04/30",
+          "desc": "内税起票額　550",
+          "amount": -50
+        }]
+      },
+      "支払手数料": {
+        "その他手数料・課税": [{
+          "date": "2026/04/10",
+          "desc": "4/1 Google GoogleWORKスペース月額利用料 営業推進",
+          "amount": 2022
+        }, {
+          "date": "2026/04/30",
+          "desc": "内税起票額　2,022",
+          "amount": -183
+        }],
+        "その他手数料・不課税": [{
+          "date": "2026/04/17",
+          "desc": "4/1 Ａｎｔｈｒｏｐｉｃ，ＰＢＣ Claude AI月額利用料　１USD@166.15円 営業推進",
+          "amount": 3323
+        }]
+      },
+      "旅費交通費": {
+        "旅費交通費": [{
+          "date": "2026/04/10",
+          "desc": "櫻木　亮太 03/28 電車（国内） なんば 谷町九丁目 ヘルプ勤務　自宅⇒ぷ都⇒自宅 往復 大阪メトロ",
+          "amount": 380
+        }, {
+          "date": "2026/04/10",
+          "desc": "冨山　忠宏 03/07 電車（国内） なんば 谷町九丁目 ぷ都勤務のため 往復 大阪メトロ",
+          "amount": 380
+        }, {
+          "date": "2026/04/10",
+          "desc": "冨山　忠宏 03/18 電車（国内） なんば 北加賀屋 岡山フードサービス㈱　セミナー参加 往復 大阪メトロ",
+          "amount": 480
+        }, {
+          "date": "2026/04/10",
+          "desc": "冨山　忠宏 03/19 電車（国内） なんば 西梅田 リトリート　撮影の為 往復 大阪メトロ",
+          "amount": 480
+        }, {
+          "date": "2026/04/10",
+          "desc": "冨山　忠宏 03/20 電車（国内） なんば 谷町九丁目 ぷ都勤務 往復 大阪メトロ",
+          "amount": 380
+        }, {
+          "date": "2026/04/10",
+          "desc": "津﨑　卓也 03/21 電車（国内） 城北公園通 高槻 高槻阪急スクエア支店　店舗勤務 往復 JR",
+          "amount": 820
+        }, {
+          "date": "2026/04/10",
+          "desc": "津﨑　卓也 03/25 電車（国内） なんば 京都 京都アバンティ　役員会出席 片道 地下鉄　JR",
+          "amount": 820
+        }, {
+          "date": "2026/04/10",
+          "desc": "津﨑　卓也 03/25 電車（国内） 京都 城北公園通 帰宅 片道 JR",
+          "amount": 750
+        }, {
+          "date": "2026/04/10",
+          "desc": "冨山　忠宏 03/31 電車（国内） なんば 谷町九丁目 ぷ都ホテル店　海外出張用制服、カウンターセットを取りに行く 往復 大阪メトロ",
+          "amount": 380
+        }, {
+          "date": "2026/04/10",
+          "desc": "冨山　忠宏 03/31 電車（国内） 新今宮 福島（大阪・ＪＲ） 朝日放送 片道 JR",
+          "amount": 200
+        }, {
+          "date": "2026/04/10",
+          "desc": "松下　光 03/31 電車（国内） 篠山口 谷町九丁目 ユニトピアささやま→自宅 片道 JR西日本、大阪メトロ",
+          "amount": 1410
+        }, {
+          "date": "2026/04/10",
+          "desc": "櫻木　亮太 04/04 電車（国内） なんば 谷町九丁目 ヘルプ勤務　自宅⇒ぷれじでんと都⇒自宅 往復 大阪メトロ",
+          "amount": 380
+        }, {
+          "date": "2026/04/10",
+          "desc": "伊藤　梓 03/31 電車（国内） 篠山口 新今宮 研修地→新今宮 片道 JR宝塚線→JR環状線",
+          "amount": 1340
+        }, {
+          "date": "2026/04/24",
+          "desc": "櫻木　亮太 04/18 電車（国内） なんば 谷町九丁目 ヘルプ勤務　自宅⇒ぷ都⇒自宅 往復 大阪メトロ",
+          "amount": 380
+        }, {
+          "date": "2026/04/24",
+          "desc": "津﨑　卓也 04/10 電車（国内） 城北公園通 天王寺 あべのキューズモール支店　臨店　設備確認 片道 JR",
+          "amount": 240
+        }, {
+          "date": "2026/04/24",
+          "desc": "津﨑　卓也 04/10 電車（国内） 天王寺 なんば 店舗→本社 片道 地下鉄",
+          "amount": 240
+        }, {
+          "date": "2026/04/24",
+          "desc": "津﨑　卓也 04/09 電車（国内） なんば 近鉄八尾 リノアス八尾　ディベロッパー面談 片道 近鉄",
+          "amount": 360
+        }, {
+          "date": "2026/04/24",
+          "desc": "津﨑　卓也 04/09 電車（国内） 近鉄八尾 城北公園通 帰宅 片道 近鉄　JR",
+          "amount": 440
+        }, {
+          "date": "2026/04/24",
+          "desc": "津﨑　卓也 04/13 電車（国内） なんば 大阪上本町 シェラトン都ホテル大阪　施設様ご面談 片道 近鉄",
+          "amount": 180
+        }, {
+          "date": "2026/04/24",
+          "desc": "津﨑　卓也 04/13 電車（国内） 大阪上本町 東梅田 阪神百貨店　ご面談 片道 地下鉄",
+          "amount": 240
+        }, {
+          "date": "2026/04/24",
+          "desc": "津﨑　卓也 04/17 電車（国内） なんば トレードセンター前 大阪市建設局　屋外広告物申請 片道 大阪メトロ",
+          "amount": 290
+        }, {
+          "date": "2026/04/24",
+          "desc": "津﨑　卓也 04/17 電車（国内） トレードセンター前 城北公園通 帰宅 片道 地下鉄　JR",
+          "amount": 540
+        }, {
+          "date": "2026/04/30",
+          "desc": "内税起票額　11,110",
+          "amount": -999
+        }],
+        "通勤手当": [{
+          "date": "2026/04/30",
+          "desc": "交通費　社員 給与 4月度 営業推進本部 8人",
+          "amount": 108510
+        }, {
+          "date": "2026/04/30",
+          "desc": "内税起票額　108,510",
+          "amount": -9864
+        }]
+      },
+      "通信費": {
+        "電話": [{
+          "date": "2026/04/27",
+          "desc": "iPhone使用料　2月分　5361　（営業推進本部）　㈱インボイス",
+          "amount": 10706
+        }, {
+          "date": "2026/04/30",
+          "desc": "内税起票額　10,706",
+          "amount": -973
+        }],
+        "郵便切手": [{
+          "date": "2026/04/24",
+          "desc": "4/16 日本郵便株式会社 レターパックライト 営業推進",
+          "amount": 4300
+        }, {
+          "date": "2026/04/30",
+          "desc": "内税起票額　4,300",
+          "amount": -390
+        }],
+        "ＩＴ関連": [{
+          "date": "2026/04/27",
+          "desc": "千房㈱　㈱インボイス　Ｗｉ－Ｆｉ　2月分　9049　（営業推進本部）",
+          "amount": 3534
+        }, {
+          "date": "2026/04/27",
+          "desc": "Ｗｉ－Ｆｉ使用料　2月分　9841　（営業推進本部）　㈱インボイス",
+          "amount": 3534
+        }, {
+          "date": "2026/04/27",
+          "desc": "Ｗｉ－Ｆｉ使用料　2月分　8918　（営業推進本部）　㈱インボイス",
+          "amount": 3534
+        }, {
+          "date": "2026/04/27",
+          "desc": "Ｗｉ－Ｆｉ使用料　2月分　3150　（営業推進本部）　㈱インボイス",
+          "amount": 3534
+        }, {
+          "date": "2026/04/27",
+          "desc": "Ｗｉ－Ｆｉ使用料　2月分　9807　（営業推進本部）　㈱インボイス",
+          "amount": 3534
+        }, {
+          "date": "2026/04/27",
+          "desc": "Ｗｉ－Ｆｉ使用料　2月分　4149　（営業推進本部）　㈱インボイス",
+          "amount": 3534
+        }, {
+          "date": "2026/04/27",
+          "desc": "Ｗｉ－Ｆｉ使用料　2月分　8504　（営業推進本部）　㈱インボイス",
+          "amount": 3534
+        }, {
+          "date": "2026/04/30",
+          "desc": "内税起票額　24,738",
+          "amount": -2247
+        }]
+      }
+    }
+  },
+  "2026-05": {
+    "year": 2026,
+    "month": 5,
+    "sourceFile": "2026_5_営業推進本部_販管費.xlsx",
+    "totals": {
+      "寮費": 77000,
+      "支払手数料": 8354,
+      "旅費交通費": 246648,
+      "通信費": 27920,
+      "交際費": 982,
+      "採用教育費": 1819
+    },
+    "detail": {
+      "寮費": {
+        "連結": 77000
+      },
+      "支払手数料": {
+        "その他手数料・課税": 8354
+      },
+      "旅費交通費": {
+        "旅費交通費": 136215,
+        "乗用車経費": 11787,
+        "通勤手当": 98646
+      },
+      "通信費": {
+        "電話": 5415,
+        "ＩＴ関連": 22505
+      },
+      "交際費": {
+        "交際費・課税": 982
+      },
+      "採用教育費": {
+        "教育研修費": 1819
+      }
+    },
+    "lines": {
+      "寮費": {
+        "連結": [{
+          "date": "2026/05/29",
+          "desc": "千房㈱　㈱レオパレス21　寮費　6月分　レオパレスレオネクスト日新大阪403　(営業推進本部)",
+          "amount": 71000
+        }, {
+          "date": "2026/05/29",
+          "desc": "千房㈱　㈱レオパレス21　共益費　6月分　レオパレスレオネクスト日新大阪403　(営業推進本部)",
+          "amount": 5500
+        }, {
+          "date": "2026/05/29",
+          "desc": "千房㈱　㈱レオパレス21　環境維持費　6月分　レオパレスレオネクスト日新大阪403　(営業推進本部)",
+          "amount": 550
+        }, {
+          "date": "2026/05/31",
+          "desc": "内税起票額　550",
+          "amount": -50
+        }]
+      },
+      "支払手数料": {
+        "その他手数料・課税": [{
+          "date": "2026/05/01",
+          "desc": "4/11 Canva Canva使用料 営業推進",
+          "amount": 1180
+        }, {
+          "date": "2026/05/15",
+          "desc": "5/1 Google Googleワークスペース月額　利用料 営業推進",
+          "amount": 2090
+        }, {
+          "date": "2026/05/15",
+          "desc": "5/1 Anthropic Claud　月額使用料 1USD=166.27円 営業推進",
+          "amount": 3658
+        }, {
+          "date": "2026/05/15",
+          "desc": "4/29 iTunes capcut 使用料 営業推進",
+          "amount": 1080
+        }, {
+          "date": "2026/05/29",
+          "desc": "5/11 Canva CANVA使用料 営業推進",
+          "amount": 1180
+        }, {
+          "date": "2026/05/31",
+          "desc": "内税起票額　9,188",
+          "amount": -834
+        }]
+      },
+      "旅費交通費": {
+        "旅費交通費": [{
+          "date": "2026/05/01",
+          "desc": "櫻木　亮太 04/25 電車（国内） なんば 谷町九丁目 ヘルプ勤務　自宅⇒ぷ都⇒自宅 往復 大阪メトロ",
+          "amount": 380
+        }, {
+          "date": "2026/05/01",
+          "desc": "櫻木　亮太 04/29 電車（国内） なんば 谷町九丁目 ヘルプ勤務　自宅⇒ぷ都⇒自宅 往復 大阪メトロ",
+          "amount": 380
+        }, {
+          "date": "2026/05/01",
+          "desc": "冨山　忠宏 04/15 電車（国内） なんば 谷町九丁目 ぷ都ホテル店 往復 大阪メトロ",
+          "amount": 380
+        }, {
+          "date": "2026/05/01",
+          "desc": "冨山　忠宏 04/22 電車（国内） なんば 心斎橋 ぷ日航ホテル店 往復 大阪メトロ",
+          "amount": 380
+        }, {
+          "date": "2026/05/01",
+          "desc": "冨山　忠宏 04/28 電車（国内） なんば 心斎橋 中国FCオーナーとの打ち合わせ 往復 大阪メトロ",
+          "amount": 380
+        }, {
+          "date": "2026/05/08",
+          "desc": "河田　勉 04/22 05/06 帰省・店舗勤務 新幹線（国内） 新大阪 東京 東海旅客鉄道株式会社4/22乗車",
+          "amount": 14030
+        }, {
+          "date": "2026/05/08",
+          "desc": "河田　勉 04/22 05/06 帰省・店舗勤務 新幹線（国内） 東京 新大阪 東海旅客鉄道株式会社5/6乗車",
+          "amount": 14630
+        }, {
+          "date": "2026/05/08",
+          "desc": "河田　勉 04/22 05/06 帰省・店舗勤務 電車（国内） 九条（大阪） 新大阪 メトロ",
+          "amount": 290
+        }, {
+          "date": "2026/05/08",
+          "desc": "河田　勉 04/22 05/06 帰省・店舗勤務 電車（国内） 東京 ソコラ若葉台 JR・京王線・小田急バス",
+          "amount": 859
+        }, {
+          "date": "2026/05/08",
+          "desc": "河田　勉 04/22 05/06 帰省・店舗勤務 電車（国内） ソコラ若葉台 国際展示場 小田急バス・京王線・JR・りんかい線",
+          "amount": 1150
+        }, {
+          "date": "2026/05/08",
+          "desc": "河田　勉 04/22 05/06 帰省・店舗勤務 電車（国内） 国際展示場 有楽町 ゆりかもめ・メトロ",
+          "amount": 429
+        }, {
+          "date": "2026/05/08",
+          "desc": "河田　勉 04/22 05/06 帰省・店舗勤務 電車（国内） 日比谷 ソコラ若葉台 メトロ・小田急線・小田急バス",
+          "amount": 752
+        }, {
+          "date": "2026/05/08",
+          "desc": "河田　勉 04/22 05/06 帰省・店舗勤務 電車（国内） ソコラ若葉台 立川北 小田急バス・京王線・多摩モノレール",
+          "amount": 1636
+        }, {
+          "date": "2026/05/08",
+          "desc": "河田　勉 04/22 05/06 帰省・店舗勤務 電車（国内） ソコラ若葉台 立川北 小田急バス・京王線・多摩モノレール",
+          "amount": 1636
+        }, {
+          "date": "2026/05/08",
+          "desc": "河田　勉 04/22 05/06 帰省・店舗勤務 電車（国内） ソコラ若葉台 舞浜 小田急バス・京王線・JR",
+          "amount": 1046
+        }, {
+          "date": "2026/05/08",
+          "desc": "河田　勉 04/22 05/06 帰省・店舗勤務 電車（国内） 舞浜 有楽町 JR",
+          "amount": 253
+        }, {
+          "date": "2026/05/08",
+          "desc": "河田　勉 04/22 05/06 帰省・店舗勤務 電車（国内） 有楽町 恵比寿（東京） メトロ",
+          "amount": 209
+        }, {
+          "date": "2026/05/08",
+          "desc": "河田　勉 04/22 05/06 帰省・店舗勤務 電車（国内） 恵比寿（東京） 池袋 JR",
+          "amount": 209
+        }, {
+          "date": "2026/05/08",
+          "desc": "河田　勉 04/22 05/06 帰省・店舗勤務 電車（国内） 池袋 ソコラ若葉台 JR・京王線・小田急バス",
+          "amount": 805
+        }, {
+          "date": "2026/05/08",
+          "desc": "河田　勉 04/22 05/06 帰省・店舗勤務 電車（国内） ソコラ若葉台 横浜 小田急バス・京王線・JR・東急東横線",
+          "amount": 1882
+        }, {
+          "date": "2026/05/08",
+          "desc": "河田　勉 04/22 05/06 帰省・店舗勤務 電車（国内） ソコラ若葉台 日比谷 小田急バス・小田急線・メトロ",
+          "amount": 1504
+        }, {
+          "date": "2026/05/08",
+          "desc": "河田　勉 04/22 05/06 帰省・店舗勤務 電車（国内） ソコラ若葉台 日比谷 小田急バス・小田急線・メトロ",
+          "amount": 1504
+        }, {
+          "date": "2026/05/08",
+          "desc": "河田　勉 04/22 05/06 帰省・店舗勤務 電車（国内） ソコラ若葉台 日比谷 小田急バス・小田急線・メトロ",
+          "amount": 1504
+        }, {
+          "date": "2026/05/08",
+          "desc": "河田　勉 04/22 05/06 帰省・店舗勤務 電車（国内） ソコラ若葉台 東京 小田急バス・京王線・JR",
+          "amount": 859
+        }, {
+          "date": "2026/05/08",
+          "desc": "河田　勉 04/22 05/06 帰省・店舗勤務 電車（国内） 新大阪 九条（大阪） メトロ",
+          "amount": 290
+        }, {
+          "date": "2026/05/15",
+          "desc": "津﨑　卓也 04/27 04/27 東京　ディベロッパー様面談 新幹線（国内） 新大阪 東京 東海旅客鉄道株式会社",
+          "amount": 14230
+        }, {
+          "date": "2026/05/15",
+          "desc": "津﨑　卓也 04/27 04/27 東京　ディベロッパー様面談 電車（国内） 東京 虎ノ門ヒルズ 地下鉄",
+          "amount": 178
+        }, {
+          "date": "2026/05/15",
+          "desc": "津﨑　卓也 04/27 04/27 東京　ディベロッパー様面談 電車（国内） 虎ノ門ヒルズ 池袋 地下鉄",
+          "amount": 209
+        }, {
+          "date": "2026/05/15",
+          "desc": "津﨑　卓也 04/27 04/27 東京　ディベロッパー様面談 電車（国内） 池袋 立川 JR",
+          "amount": 616
+        }, {
+          "date": "2026/05/15",
+          "desc": "津﨑　卓也 04/27 04/27 東京　ディベロッパー様面談 電車（国内） 立川 東京 JR",
+          "amount": 715
+        }, {
+          "date": "2026/05/15",
+          "desc": "津﨑　卓也 04/27 04/27 東京　ディベロッパー様面談 新幹線（国内） 東京 新大阪 東海旅客鉄道株式会社",
+          "amount": 14230
+        }, {
+          "date": "2026/05/15",
+          "desc": "小山　佳昭 04/22 電車（国内） なんば 堺筋本町 堺筋本町 往復 大阪メトロ",
+          "amount": 380
+        }, {
+          "date": "2026/05/15",
+          "desc": "櫻木　亮太 05/02 電車（国内） なんば 谷町九丁目 ヘルプ勤務　ぷ都　自宅⇒ぷ都⇒自宅 往復 大阪メトロ",
+          "amount": 380
+        }, {
+          "date": "2026/05/15",
+          "desc": "櫻木　亮太 05/04 電車（国内） なんば 谷町九丁目 ヘルプ勤務　ぷ都　自宅⇒ぷ都⇒自宅 往復 大阪メトロ",
+          "amount": 380
+        }, {
+          "date": "2026/05/15",
+          "desc": "櫻木　亮太 05/05 電車（国内） なんば 谷町九丁目 ヘルプ勤務　ぷ都　自宅⇒ぷ都⇒自宅 往復 大阪メトロ",
+          "amount": 380
+        }, {
+          "date": "2026/05/15",
+          "desc": "櫻木　亮太 05/06 電車（国内） なんば 谷町九丁目 ヘルプ勤務　ぷ都　自宅⇒ぷ都⇒自宅 往復 大阪メトロ",
+          "amount": 380
+        }, {
+          "date": "2026/05/15",
+          "desc": "伊藤　梓 05/03 電車（国内） 久宝寺 近鉄八尾 リノアス八尾支店 往復 西日本旅客鉄道株式会社 / 近畿日本鉄道",
+          "amount": 840
+        }, {
+          "date": "2026/05/15",
+          "desc": "伊藤　梓 05/05 電車（国内） 久宝寺 近鉄八尾 リノアス八尾支店 往復 西日本旅客鉄道株式会社 / 近畿日本鉄道",
+          "amount": 840
+        }, {
+          "date": "2026/05/15",
+          "desc": "伊藤　梓 05/06 電車（国内） 久宝寺 近鉄八尾 リノアス八尾支店 往復 西日本旅客鉄道株式会社 / 近畿日本鉄道",
+          "amount": 840
+        }, {
+          "date": "2026/05/15",
+          "desc": "冨山　忠宏 05/02 電車（国内） なんば 心斎橋 大丸勤務 往復 大阪メトロ",
+          "amount": 380
+        }, {
+          "date": "2026/05/15",
+          "desc": "冨山　忠宏 05/03 電車（国内） なんば 心斎橋 大丸勤務 往復 大阪メトロ",
+          "amount": 380
+        }, {
+          "date": "2026/05/15",
+          "desc": "冨山　忠宏 05/04 電車（国内） なんば 西梅田 北店勤務 往復 大阪メトロ",
+          "amount": 480
+        }, {
+          "date": "2026/05/15",
+          "desc": "冨山　忠宏 05/11 電車（国内） なんば 大日 カンドゥー視察及び商談 片道 大阪メトロ",
+          "amount": 340
+        }, {
+          "date": "2026/05/15",
+          "desc": "冨山　忠宏 05/11 電車（国内） 大日 東梅田 阪神百貨店視察 片道 大阪メトロ",
+          "amount": 290
+        }, {
+          "date": "2026/05/15",
+          "desc": "冨山　忠宏 05/11 電車（国内） 梅田 なんば 阪神百貨店視察 片道 大阪メトロ",
+          "amount": 240
+        }, {
+          "date": "2026/05/22",
+          "desc": "櫻木　亮太 05/18 電車（国内） 大阪難波 近鉄八尾 クオリティチェック　本社⇒八尾 片道 近鉄",
+          "amount": 360
+        }, {
+          "date": "2026/05/22",
+          "desc": "櫻木　亮太 05/18 電車（国内） 近鉄八尾 天王寺 クオリティチェック　八尾⇒あべの 片道 近鉄　JR",
+          "amount": 450
+        }, {
+          "date": "2026/05/22",
+          "desc": "櫻木　亮太 05/18 電車（国内） 天王寺 なんば クオリティチェック　あべの⇒ビル 片道 大阪メトロ",
+          "amount": 190
+        }, {
+          "date": "2026/05/22",
+          "desc": "内藤　寛 05/20 電車（国内） なんば 堺東 堺東支店　クオリティチェック 往復 南海電鉄",
+          "amount": 580
+        }, {
+          "date": "2026/05/22",
+          "desc": "櫻木　亮太 05/19 電車（国内） なんば 大阪城公園 クオリティチェック　ビル⇒名代 片道 大阪メトロ　JR",
+          "amount": 340
+        }, {
+          "date": "2026/05/22",
+          "desc": "櫻木　亮太 05/19 電車（国内） 大阪城公園 京橋（大阪） クオリティチェック　名代⇒京橋 片道 JR",
+          "amount": 150
+        }, {
+          "date": "2026/05/22",
+          "desc": "櫻木　亮太 05/19 電車（国内） 京橋（大阪） なんば クオリティチェック　京橋⇒自宅 片道 大阪メトロ",
+          "amount": 240
+        }, {
+          "date": "2026/05/22",
+          "desc": "櫻木　亮太 05/20 電車（国内） なんば 京都 クオリティチェック　自宅⇒京都 片道 大阪メトロ　JR",
+          "amount": 820
+        }, {
+          "date": "2026/05/22",
+          "desc": "櫻木　亮太 05/20 電車（国内） 京都 高槻 クオリティチェック　京都⇒高槻 片道 JR",
+          "amount": 410
+        }, {
+          "date": "2026/05/22",
+          "desc": "櫻木　亮太 05/20 電車（国内） 高槻 なんば クオリティチェック　高槻⇒ビル 片道 JR　大阪メトロ",
+          "amount": 530
+        }, {
+          "date": "2026/05/22",
+          "desc": "冨山　忠宏 05/15 電車（国内） なんば 四ツ橋 大阪農業園芸・食テクノロジー専門学校（産学連携MTG） 片道 大阪メトロ",
+          "amount": 190
+        }, {
+          "date": "2026/05/22",
+          "desc": "冨山　忠宏 05/15 電車（国内） 四ツ橋 花園町 職親PJ（宮崎さん）面談 往復 大阪メトロ",
+          "amount": 480
+        }, {
+          "date": "2026/05/22",
+          "desc": "冨山　忠宏 05/19 電車（国内） 心斎橋 なんば 大丸（梶浦店長MTG） 片道 大阪メトロ",
+          "amount": 190
+        }, {
+          "date": "2026/05/22",
+          "desc": "冨山　忠宏 05/20 電車（国内） なんば 天満橋 岡山フードサービスセミナー 片道 大阪メトロ",
+          "amount": 240
+        }, {
+          "date": "2026/05/22",
+          "desc": "冨山　忠宏 05/20 電車（国内） 天満橋 東梅田 岡山フードサービスセミナー懇親会参加 片道 大阪メトロ",
+          "amount": 190
+        }, {
+          "date": "2026/05/22",
+          "desc": "冨山　忠宏 05/20 電車（国内） 東梅田 なんば 懇親会からの帰宅のため 片道 大阪メトロ",
+          "amount": 240
+        }, {
+          "date": "2026/05/29",
+          "desc": "櫻木　亮太 05/13 05/15 関東クオリティチェック 宿泊費（国内）   ホテルマイステイズ五反田駅前 5/135/15",
+          "amount": 25881
+        }, {
+          "date": "2026/05/29",
+          "desc": "櫻木　亮太 05/13 05/15 関東クオリティチェック 新幹線（国内） 新大阪 新横浜 新幹線　5/13",
+          "amount": 13900
+        }, {
+          "date": "2026/05/29",
+          "desc": "櫻木　亮太 05/13 05/15 関東クオリティチェック 電車（国内） なんば 新大阪 大阪メトロ",
+          "amount": 290
+        }, {
+          "date": "2026/05/29",
+          "desc": "櫻木　亮太 05/13 05/15 関東クオリティチェック 電車（国内） 新横浜 横浜 市営ブルーライン",
+          "amount": 242
+        }, {
+          "date": "2026/05/29",
+          "desc": "櫻木　亮太 05/13 05/15 関東クオリティチェック 電車（国内） 横浜 国際展示場 JR",
+          "amount": 676
+        }, {
+          "date": "2026/05/29",
+          "desc": "櫻木　亮太 05/13 05/15 関東クオリティチェック 電車（国内） 国際展示場 舞浜 JR",
+          "amount": 471
+        }, {
+          "date": "2026/05/29",
+          "desc": "櫻木　亮太 05/13 05/15 関東クオリティチェック 電車（国内） 舞浜 五反田 JR",
+          "amount": 440
+        }, {
+          "date": "2026/05/29",
+          "desc": "櫻木　亮太 05/13 05/15 関東クオリティチェック 電車（国内） 五反田 八王子 JR",
+          "amount": 803
+        }, {
+          "date": "2026/05/29",
+          "desc": "櫻木　亮太 05/13 05/15 関東クオリティチェック 電車（国内） 八王子 立川 JR",
+          "amount": 209
+        }, {
+          "date": "2026/05/29",
+          "desc": "櫻木　亮太 05/13 05/15 関東クオリティチェック 電車（国内） 立川 池袋 JR",
+          "amount": 616
+        }, {
+          "date": "2026/05/29",
+          "desc": "櫻木　亮太 05/13 05/15 関東クオリティチェック 電車（国内） 池袋 五反田 JR",
+          "amount": 253
+        }, {
+          "date": "2026/05/29",
+          "desc": "櫻木　亮太 05/13 05/15 関東クオリティチェック 電車（国内） 五反田 有楽町 JR",
+          "amount": 209
+        }, {
+          "date": "2026/05/29",
+          "desc": "櫻木　亮太 05/13 05/15 関東クオリティチェック 電車（国内） 有楽町 恵比寿（東京） JR",
+          "amount": 253
+        }, {
+          "date": "2026/05/29",
+          "desc": "櫻木　亮太 05/13 05/15 関東クオリティチェック 電車（国内） 恵比寿（東京） 虎ノ門ヒルズ 東京メトロ",
+          "amount": 178
+        }, {
+          "date": "2026/05/29",
+          "desc": "櫻木　亮太 05/13 05/15 関東クオリティチェック 電車（国内） 虎ノ門 東京 東京メトロ",
+          "amount": 178
+        }, {
+          "date": "2026/05/29",
+          "desc": "櫻木　亮太 05/13 05/15 関東クオリティチェック 電車（国内） 新大阪 なんば 大阪メトロ",
+          "amount": 290
+        }, {
+          "date": "2026/05/29",
+          "desc": "櫻木　亮太 05/13 05/15 関東クオリティチェック 新幹線（国内） 東京 新大阪 新幹線　5/16",
+          "amount": 14230
+        }, {
+          "date": "2026/05/29",
+          "desc": "櫻木　亮太 05/26 電車（国内） なんば 西梅田 憩コース講習　ビル⇒ぷ北⇒ビル 往復 大阪メトロ",
+          "amount": 480
+        }, {
+          "date": "2026/05/31",
+          "desc": "内税起票額　149,284",
+          "amount": -13069
+        }],
+        "乗用車経費": [{
+          "date": "2026/05/01",
+          "desc": "小山　佳昭 04/03 駐車場代 西長堀 神戸 神戸 -- パカラ株式会社",
+          "amount": 400
+        }, {
+          "date": "2026/05/07",
+          "desc": "ＥＴＣ料金　3月分　中国池入→神戸西出、他　小山　（営業推進本部）　㈱クレディセゾン",
+          "amount": 7080
+        }, {
+          "date": "2026/05/08",
+          "desc": "内藤　寛 03/26 ガソリン代 道頓堀ビル店 たいよう農園 たいよう農園入社式ケータリング往復ガソリン代 -- 山内石油株式会社",
+          "amount": 5484
+        }, {
+          "date": "2026/05/31",
+          "desc": "内税起票額　12,964",
+          "amount": -1177
+        }],
+        "通勤手当": [{
+          "date": "2026/05/31",
+          "desc": "交通費　社員 給与 5月度 営業推進本部 8人",
+          "amount": 108510
+        }, {
+          "date": "2026/05/31",
+          "desc": "内税起票額　108,510",
+          "amount": -9864
+        }]
+      },
+      "通信費": {
+        "電話": [{
+          "date": "2026/05/27",
+          "desc": "iPhone使用料　3月分　5361　（営業推進本部）　㈱インボイス",
+          "amount": 5956
+        }, {
+          "date": "2026/05/31",
+          "desc": "内税起票額　5,956",
+          "amount": -541
+        }],
+        "ＩＴ関連": [{
+          "date": "2026/05/27",
+          "desc": "千房㈱　㈱インボイス　Ｗｉ－Ｆｉ　3月分　9049　（営業推進本部）",
+          "amount": 3536
+        }, {
+          "date": "2026/05/27",
+          "desc": "Ｗｉ－Ｆｉ使用料　3月分　9841　（営業推進本部）　㈱インボイス",
+          "amount": 3536
+        }, {
+          "date": "2026/05/27",
+          "desc": "Ｗｉ－Ｆｉ使用料　3月分　8918　（営業推進本部）　㈱インボイス",
+          "amount": 3536
+        }, {
+          "date": "2026/05/27",
+          "desc": "Ｗｉ－Ｆｉ使用料　3月分　3150　（営業推進本部）　㈱インボイス",
+          "amount": 3536
+        }, {
+          "date": "2026/05/27",
+          "desc": "Ｗｉ－Ｆｉ使用料　3月分　9807　（営業推進本部）　㈱インボイス",
+          "amount": 3536
+        }, {
+          "date": "2026/05/27",
+          "desc": "Ｗｉ－Ｆｉ使用料　3月分　4149　（営業推進本部）　㈱インボイス",
+          "amount": 3536
+        }, {
+          "date": "2026/05/27",
+          "desc": "Ｗｉ－Ｆｉ使用料　3月分　8504　（営業推進本部）　㈱インボイス",
+          "amount": 3536
+        }, {
+          "date": "2026/05/31",
+          "desc": "内税起票額　24,752",
+          "amount": -2247
+        }]
+      },
+      "交際費": {
+        "交際費・課税": [{
+          "date": "2026/05/29",
+          "desc": "5/12　ドリンク、デザートサービス　（本店）　アイン食品　森田様　計1名",
+          "amount": 1080
+        }, {
+          "date": "2026/05/31",
+          "desc": "内税起票額　1,080",
+          "amount": -98
+        }]
+      },
+      "採用教育費": {
+        "教育研修費": [{
+          "date": "2026/05/22",
+          "desc": "5/20 岡山フードサービス 岡山フードサービス㈱セミナー参加 営業推進",
+          "amount": 2000
+        }, {
+          "date": "2026/05/31",
+          "desc": "内税起票額　2,000",
+          "amount": -181
+        }]
+      }
+    }
+  },
+  "2026-06": {
+    "year": 2026,
+    "month": 6,
+    "sourceFile": "2026_6_営業推進本部_販管費.csv",
+    "totals": {
+      "寮費": 77000,
+      "支払手数料": 6039,
+      "旅費交通費": 175101,
+      "通信費": 27904,
+      "消耗品費": 102000,
+      "研究費": 2419,
+      "諸会費": 8182,
+      "採用教育費": 3638
+    },
+    "detail": {
+      "寮費": {
+        "連結": 77000
+      },
+      "支払手数料": {
+        "その他手数料・課税": 6039
+      },
+      "旅費交通費": {
+        "旅費交通費": 76455,
+        "通勤手当": 98646
+      },
+      "通信費": {
+        "電話": 5413,
+        "ＩＴ関連": 22491
+      },
+      "消耗品費": {
+        "その他": 102000
+      },
+      "研究費": {
+        "開発費": 2419
+      },
+      "諸会費": {
+        "諸会費・課税": 8182
+      },
+      "採用教育費": {
+        "教育研修費": 3638
+      }
+    },
+    "lines": {
+      "寮費": {
+        "連結": [{
+          "date": "2026/06/30",
+          "desc": "千房㈱　㈱レオパレス21　寮費　7月分　レオパレスレオネクスト日新大阪403　(営業推進本部)",
+          "amount": 71000
+        }, {
+          "date": "2026/06/30",
+          "desc": "千房㈱　㈱レオパレス21　共益費　7月分　レオパレスレオネクスト日新大阪403　(営業推進本部)",
+          "amount": 5500
+        }, {
+          "date": "2026/06/30",
+          "desc": "千房㈱　㈱レオパレス21　環境維持費　7月分　レオパレスレオネクスト日新大阪403　(営業推進本部)",
+          "amount": 550
+        }, {
+          "date": "2026/06/30",
+          "desc": "内税起票額　550",
+          "amount": -50
+        }]
+      },
+      "支払手数料": {
+        "その他手数料・課税": [{
+          "date": "2026/06/05",
+          "desc": "5/22 Anthropic, PBC claude利用料 営業推進",
+          "amount": 910
+        }, {
+          "date": "2026/06/12",
+          "desc": "6/1 Google GoogleWORKspace　月額使用料 営業推進",
+          "amount": 2090
+        }, {
+          "date": "2026/06/19",
+          "desc": "6/1 Ａｎｔｈｒｏｐｉｃ Claud　AI　月額使用料　１USD=165.5円 営業推進",
+          "amount": 3642
+        }, {
+          "date": "2026/06/30",
+          "desc": "内税起票額　6,642",
+          "amount": -603
+        }]
+      },
+      "旅費交通費": {
+        "旅費交通費": [{
+          "date": "2026/06/05",
+          "desc": "櫻木　亮太 05/27 電車（国内） なんば 谷町九丁目 新GM　クオリティチェック　ビル⇒ぷ都⇒ビル 往復 大阪メトロ",
+          "amount": 380
+        }, {
+          "date": "2026/06/05",
+          "desc": "櫻木　亮太 05/28 電車（国内） なんば 谷町九丁目 憩コース　講習　ビル⇒ぷ都⇒ビル 往復 大阪メトロ",
+          "amount": 380
+        }, {
+          "date": "2026/06/05",
+          "desc": "小山　佳昭 05/12 電車（国内） なんば 西梅田 阪神百貨店 往復 大阪メトロ",
+          "amount": 480
+        }, {
+          "date": "2026/06/05",
+          "desc": "小山　佳昭 05/16 電車（国内） なんば 梅田 阪神百貨店 往復 大阪メトロ",
+          "amount": 480
+        }, {
+          "date": "2026/06/05",
+          "desc": "小山　佳昭 05/26 電車（国内） なんば 梅田 阪神百貨店 往復 大阪メトロ",
+          "amount": 480
+        }, {
+          "date": "2026/06/05",
+          "desc": "冨山　忠宏 05/25 電車（国内） なんば 心斎橋 梶浦店長MTG 往復 大阪メトロ",
+          "amount": 380
+        }, {
+          "date": "2026/06/05",
+          "desc": "櫻木　亮太 06/03 電車（国内） なんば 西梅田 クオリティチェック　再講習　ビル⇒ぷ北⇒自宅 往復 大阪メトロ",
+          "amount": 480
+        }, {
+          "date": "2026/06/05",
+          "desc": "津﨑　卓也 05/31 電車（国内） 城北公園通 高槻 店舗勤務 往復 JR",
+          "amount": 820
+        }, {
+          "date": "2026/06/05",
+          "desc": "津﨑　卓也 06/08 電車（国内） 心斎橋 京橋（大阪） 京阪モール支店　再契約打ち合わせ 往復 大阪メトロ",
+          "amount": 480
+        }, {
+          "date": "2026/06/05",
+          "desc": "津﨑　卓也 06/01 電車（国内） 梅田 京都 アバンティ役員会打ち合わせ 往復 JR",
+          "amount": 1160
+        }, {
+          "date": "2026/06/05",
+          "desc": "津﨑　卓也 06/03 電車（国内） 梅田 京都 アバンティテナント総会 往復 JR",
+          "amount": 1160
+        }, {
+          "date": "2026/06/05",
+          "desc": "櫻木　亮太 06/04 電車（国内） なんば 谷町九丁目 憩クオリティチェック　ぷ都 往復 大阪メトロ",
+          "amount": 380
+        }, {
+          "date": "2026/06/12",
+          "desc": "河田　勉 05/26 06/01 帰省・店舗臨店 新幹線（国内） 新大阪駅 新横浜駅 5/26乗車　東海旅客鉄道株式会社",
+          "amount": 13900
+        }, {
+          "date": "2026/06/12",
+          "desc": "河田　勉 05/26 06/01 帰省・店舗臨店 新幹線（国内） 東京駅 新大阪駅 6/1乗車　東海旅客鉄道株式会社",
+          "amount": 14030
+        }, {
+          "date": "2026/06/12",
+          "desc": "河田　勉 05/26 06/01 帰省・店舗臨店 電車（国内） 九条（大阪） 新大阪 メトロ",
+          "amount": 290
+        }, {
+          "date": "2026/06/12",
+          "desc": "河田　勉 05/26 06/01 帰省・店舗臨店 電車（国内） 新横浜 ソコラ若葉台 JR・小田急線・小田急バス",
+          "amount": 821
+        }, {
+          "date": "2026/06/12",
+          "desc": "河田　勉 05/26 06/01 帰省・店舗臨店 電車（国内） ソコラ若葉台 虎ノ門ヒルズ 小田急バス・小田急線・メトロ",
+          "amount": 752
+        }, {
+          "date": "2026/06/12",
+          "desc": "河田　勉 05/26 06/01 帰省・店舗臨店 電車（国内） 虎ノ門ヒルズ 恵比寿（東京） メトロ",
+          "amount": 178
+        }, {
+          "date": "2026/06/12",
+          "desc": "河田　勉 05/26 06/01 帰省・店舗臨店 電車（国内） 恵比寿（東京） ソコラ若葉台 JR・京王線・小田急バス",
+          "amount": 805
+        }, {
+          "date": "2026/06/12",
+          "desc": "河田　勉 05/26 06/01 帰省・店舗臨店 電車（国内） ソコラ若葉台 立川北 小田急バス・京王線・多摩モノレール",
+          "amount": 1636
+        }, {
+          "date": "2026/06/12",
+          "desc": "河田　勉 05/26 06/01 帰省・店舗臨店 電車（国内） ソコラ若葉台 八王子 小田急バス・京王線・JR",
+          "amount": 689
+        }, {
+          "date": "2026/06/12",
+          "desc": "河田　勉 05/26 06/01 帰省・店舗臨店 電車（国内） 八王子 有楽町 JR",
+          "amount": 902
+        }, {
+          "date": "2026/06/12",
+          "desc": "河田　勉 05/26 06/01 帰省・店舗臨店 電車（国内） 有楽町 東京 JR",
+          "amount": 155
+        }, {
+          "date": "2026/06/12",
+          "desc": "河田　勉 05/26 06/01 帰省・店舗臨店 電車（国内） 新大阪 九条（大阪） メトロ",
+          "amount": 290
+        }, {
+          "date": "2026/06/12",
+          "desc": "小山　佳昭 06/09 06/10 東京 新幹線（国内） 新大阪 東京 東海鉄道旅客株式会社",
+          "amount": 14030
+        }, {
+          "date": "2026/06/12",
+          "desc": "小山　佳昭 06/09 06/10 東京 新幹線（国内） 品川 新大阪 東海旅客鉄道株式会社",
+          "amount": 14030
+        }, {
+          "date": "2026/06/12",
+          "desc": "小山　佳昭 06/09 06/10 東京 宿泊費（国内） 大阪 東京 株式会社東横イン",
+          "amount": 9800
+        }, {
+          "date": "2026/06/12",
+          "desc": "小山　佳昭 06/09 06/10 東京 電車（国内） ドーム前千代崎 新大阪 大阪メトロ",
+          "amount": 290
+        }, {
+          "date": "2026/06/12",
+          "desc": "小山　佳昭 06/09 06/10 東京 電車（国内） 東京 有楽町 JR山手線",
+          "amount": 155
+        }, {
+          "date": "2026/06/12",
+          "desc": "小山　佳昭 06/09 06/10 東京 電車（国内） 有楽町 虎ノ門 JR山手線/東京メトロ銀座線",
+          "amount": 333
+        }, {
+          "date": "2026/06/12",
+          "desc": "小山　佳昭 06/09 06/10 東京 電車（国内） 新橋 大井町 JR京浜東北線",
+          "amount": 209
+        }, {
+          "date": "2026/06/12",
+          "desc": "小山　佳昭 06/09 06/10 東京 電車（国内） 大井町 渋谷 りんかい線/埼京線",
+          "amount": 409
+        }, {
+          "date": "2026/06/12",
+          "desc": "小山　佳昭 06/09 06/10 東京 電車（国内） 渋谷 六本木一丁目 東京メトロ",
+          "amount": 178
+        }, {
+          "date": "2026/06/12",
+          "desc": "小山　佳昭 06/09 06/10 東京 バス（国内） 六本木一丁目 大森（東京） 東京メトロ/京浜東北線",
+          "amount": 387
+        }, {
+          "date": "2026/06/12",
+          "desc": "小山　佳昭 06/09 06/10 東京 電車（国内） 大森（東京） 品川 京浜東北線",
+          "amount": 199
+        }, {
+          "date": "2026/06/12",
+          "desc": "小山　佳昭 06/09 06/10 東京 電車（国内） 新大阪 ドーム前千代崎 大阪メトロ",
+          "amount": 290
+        }, {
+          "date": "2026/06/12",
+          "desc": "河田　勉 05/11 電車（国内） なんば 大日 大日イオン　カンドゥー視察 片道 メトロ",
+          "amount": 340
+        }, {
+          "date": "2026/06/12",
+          "desc": "河田　勉 05/11 電車（国内） 大日 梅田 阪神梅田フードホール視察 片道 メトロ",
+          "amount": 290
+        }, {
+          "date": "2026/06/12",
+          "desc": "河田　勉 05/11 電車（国内） 梅田 九条（大阪） 視察後帰宅 片道 メトロ",
+          "amount": 240
+        }, {
+          "date": "2026/06/12",
+          "desc": "河田　勉 05/20 電車（国内） なんば 天満橋 天満橋ドーンセンター　岡山フードサービス繁盛塾セミナー出席 片道 メトロ",
+          "amount": 240
+        }, {
+          "date": "2026/06/12",
+          "desc": "河田　勉 05/20 電車（国内） 天満橋 梅田 阪神梅田フードホール視察・岡山フードサービス繁盛塾懇親会出席 片道 メトロ",
+          "amount": 190
+        }, {
+          "date": "2026/06/12",
+          "desc": "河田　勉 05/20 電車（国内） 梅田 九条（大阪） 帰宅 片道 メトロ",
+          "amount": 240
+        }, {
+          "date": "2026/06/12",
+          "desc": "河田　勉 05/26 電車（国内） 九条（大阪） 心斎橋 すみ吉心斎橋臨店 片道 メトロ",
+          "amount": 240
+        }, {
+          "date": "2026/06/12",
+          "desc": "櫻木　亮太 06/08 電車（国内） なんば 西梅田 憩クオリティチェック2回目　ビル⇒ぷ北⇒自宅 往復 大阪メトロ",
+          "amount": 480
+        }, {
+          "date": "2026/06/30",
+          "desc": "内税起票額　84,078",
+          "amount": -7623
+        }],
+        "通勤手当": [{
+          "date": "2026/06/30",
+          "desc": "交通費　社員 給与 6月度 営業推進本部 8人",
+          "amount": 108510
+        }, {
+          "date": "2026/06/30",
+          "desc": "内税起票額　108,510",
+          "amount": -9864
+        }]
+      },
+      "通信費": {
+        "電話": [{
+          "date": "2026/06/29",
+          "desc": "iPhone使用料　4月分　5361　（営業推進本部）　㈱インボイス",
+          "amount": 5954
+        }, {
+          "date": "2026/06/30",
+          "desc": "内税起票額　5,954",
+          "amount": -541
+        }],
+        "ＩＴ関連": [{
+          "date": "2026/06/29",
+          "desc": "千房㈱　㈱インボイス　Ｗｉ－Ｆｉ　4月分　9049　（営業推進本部）",
+          "amount": 3534
+        }, {
+          "date": "2026/06/29",
+          "desc": "Ｗｉ－Ｆｉ使用料　4月分　9841　（営業推進本部）　㈱インボイス",
+          "amount": 3534
+        }, {
+          "date": "2026/06/29",
+          "desc": "Ｗｉ－Ｆｉ使用料　4月分　8918　（営業推進本部）　㈱インボイス",
+          "amount": 3534
+        }, {
+          "date": "2026/06/29",
+          "desc": "Ｗｉ－Ｆｉ使用料　4月分　3150　（営業推進本部）　㈱インボイス",
+          "amount": 3534
+        }, {
+          "date": "2026/06/29",
+          "desc": "Ｗｉ－Ｆｉ使用料　4月分　9807　（営業推進本部）　㈱インボイス",
+          "amount": 3534
+        }, {
+          "date": "2026/06/29",
+          "desc": "Ｗｉ－Ｆｉ使用料　4月分　4149　（営業推進本部）　㈱インボイス",
+          "amount": 3534
+        }, {
+          "date": "2026/06/29",
+          "desc": "Ｗｉ－Ｆｉ使用料　4月分　8504　（営業推進本部）　㈱インボイス",
+          "amount": 3534
+        }, {
+          "date": "2026/06/30",
+          "desc": "内税起票額　24,738",
+          "amount": -2247
+        }]
+      },
+      "消耗品費": {
+        "その他": [{
+          "date": "2026/06/05",
+          "desc": "ワヨー㈱　ミニパンチングバルーン*20　（営業推進本部）",
+          "amount": 112200
+        }, {
+          "date": "2026/06/30",
+          "desc": "内税起票額　112,200",
+          "amount": -10200
+        }]
+      },
+      "研究費": {
+        "開発費": [{
+          "date": "2026/06/19",
+          "desc": "5/12 株式会社阪神百貨店 阪神百貨店既存施設視察 営業推進",
+          "amount": 2660
+        }, {
+          "date": "2026/06/30",
+          "desc": "内税起票額　2,660",
+          "amount": -241
+        }]
+      },
+      "諸会費": {
+        "諸会費・課税": [{
+          "date": "2026/06/30",
+          "desc": "一般社団法人　大阪外食産業協会　2026年食中毒・感染症予防セミナー、懇親会参加費　河田、内藤",
+          "amount": 9000
+        }, {
+          "date": "2026/06/30",
+          "desc": "内税起票額　9,000",
+          "amount": -818
+        }]
+      },
+      "採用教育費": {
+        "教育研修費": [{
+          "date": "2026/06/12",
+          "desc": "5/20 岡山フードサービス 岡山フードサービス未来繁盛塾セミナー会費 営業推進",
+          "amount": 2000
+        }, {
+          "date": "2026/06/19",
+          "desc": "5/20 岡山フードサービス株式会社 岡山フードサービス様　未来繁盛塾セミナー出席 営業推進",
+          "amount": 2000
+        }, {
+          "date": "2026/06/30",
+          "desc": "内税起票額　4,000",
+          "amount": -362
+        }]
+      }
+    }
+  },
+  "2026-07": {
+    "year": 2026,
+    "month": 7,
+    "sourceFile": "2026_7_営業推進本部_販管費.xlsx",
+    "totals": {
+      "寮費": 77000,
+      "支払手数料": 21298,
+      "旅費交通費": 214506,
+      "通信費": 29859,
+      "交際費": 3060,
+      "消耗品費": 1891,
+      "採用教育費": 2729
+    },
+    "detail": {
+      "寮費": {
+        "連結": 77000
+      },
+      "支払手数料": {
+        "その他手数料・課税": 21298
+      },
+      "旅費交通費": {
+        "旅費交通費": 109657,
+        "乗用車経費": 6203,
+        "通勤手当": 98646
+      },
+      "通信費": {
+        "電話": 5413,
+        "郵便切手": 1955,
+        "ＩＴ関連": 22491
+      },
+      "交際費": {
+        "交際費・課税": 3060
+      },
+      "消耗品費": {
+        "その他": 1891
+      },
+      "採用教育費": {
+        "教育研修費": 2729
+      }
+    },
+    "lines": {
+      "寮費": {
+        "連結": [{
+          "date": "2026/07/31",
+          "desc": "千房㈱　㈱レオパレス21　寮費　8月分　レオパレスレオネクスト日新大阪403　(営業推進本部)",
+          "amount": 71000
+        }, {
+          "date": "2026/07/31",
+          "desc": "千房㈱　㈱レオパレス21　共益費　8月分　レオパレスレオネクスト日新大阪403　(営業推進本部)",
+          "amount": 5500
+        }, {
+          "date": "2026/07/31",
+          "desc": "千房㈱　㈱レオパレス21　環境維持費　8月分　レオパレスレオネクスト日新大阪403　(営業推進本部)",
+          "amount": 550
+        }, {
+          "date": "2026/07/31",
+          "desc": "内税起票額　550",
+          "amount": -50
+        }]
+      },
+      "支払手数料": {
+        "その他手数料・課税": [{
+          "date": "2026/07/03",
+          "desc": "5/29 iTunes CapCutアプリ使用料 営業推進",
+          "amount": 1080
+        }, {
+          "date": "2026/07/03",
+          "desc": "6/11 Canva Canva使用料 営業推進",
+          "amount": 1180
+        }, {
+          "date": "2026/07/17",
+          "desc": "6/5 Ａｎｔｈｒｏｐｉｃ，ＰＢＣ AI（Claude）月額利用料６月分　USD22.00*@166.273 営業推進",
+          "amount": 3658
+        }, {
+          "date": "2026/07/17",
+          "desc": "7/1 Google GoogleWORKspace　月額使用料 営業推進",
+          "amount": 2090
+        }, {
+          "date": "2026/07/17",
+          "desc": "6/29 iTunes CapCut使用料 営業推進",
+          "amount": 1080
+        }, {
+          "date": "2026/07/24",
+          "desc": "7/1 Anthropic,PBC claud月額使用料　USD22.00*＠168.955 営業推進",
+          "amount": 3717
+        }, {
+          "date": "2026/07/24",
+          "desc": "7/11 CANVA CANVA使用料 営業推進",
+          "amount": 1180
+        }, {
+          "date": "2026/07/31",
+          "desc": "手数料（ＢＵカード）　6月分　（営業推進本部）　協同組合　ビジネスアーバン",
+          "amount": 225
+        }, {
+          "date": "2026/07/31",
+          "desc": "7/11 Anthropic,PBC claud月額使用料　USD22.00*168.819 営業推進",
+          "amount": 3714
+        }, {
+          "date": "2026/07/31",
+          "desc": "7/3 TieUps LPまとめサイト年間利用料 営業推進",
+          "amount": 5500
+        }, {
+          "date": "2026/07/31",
+          "desc": "内税起票額　23,424",
+          "amount": -2126
+        }]
+      },
+      "旅費交通費": {
+        "旅費交通費": [{
+          "date": "2026/07/03",
+          "desc": "内藤　寛 06/08 06/11 関東クオリティチェック　高瀬展示会　小川フード社外研修 宿泊費（国内）   EXPEDIA   アワーズイン阪急",
+          "amount": 33090
+        }, {
+          "date": "2026/07/03",
+          "desc": "内藤　寛 06/08 06/11 関東クオリティチェック　高瀬展示会　小川フード社外研修 新幹線（国内） 新大阪 品川 東海旅客鉄道株式会社",
+          "amount": 14030
+        }, {
+          "date": "2026/07/03",
+          "desc": "内藤　寛 06/08 06/11 関東クオリティチェック　高瀬展示会　小川フード社外研修 電車（国内） 多田（兵庫） 新大阪 能勢電鉄　JR",
+          "amount": 820
+        }, {
+          "date": "2026/07/03",
+          "desc": "内藤　寛 06/08 06/11 関東クオリティチェック　高瀬展示会　小川フード社外研修 電車（国内） 品川 虎ノ門 山手線　東京メトロ",
+          "amount": 377
+        }, {
+          "date": "2026/07/03",
+          "desc": "内藤　寛 06/08 06/11 関東クオリティチェック　高瀬展示会　小川フード社外研修 電車（国内） 虎ノ門 恵比寿（東京） 東京メトロ",
+          "amount": 178
+        }, {
+          "date": "2026/07/03",
+          "desc": "内藤　寛 06/08 06/11 関東クオリティチェック　高瀬展示会　小川フード社外研修 電車（国内） 恵比寿（東京） 大井町 埼京線　りんかい",
+          "amount": 409
+        }, {
+          "date": "2026/07/03",
+          "desc": "内藤　寛 06/08 06/11 関東クオリティチェック　高瀬展示会　小川フード社外研修 電車（国内） 大井町 東京 京浜東北線",
+          "amount": 209
+        }, {
+          "date": "2026/07/03",
+          "desc": "内藤　寛 06/08 06/11 関東クオリティチェック　高瀬展示会　小川フード社外研修 電車（国内） 新橋 大井町 京浜東北線",
+          "amount": 209
+        }, {
+          "date": "2026/07/03",
+          "desc": "内藤　寛 06/08 06/11 関東クオリティチェック　高瀬展示会　小川フード社外研修 電車（国内） 大井町 品川 京浜東北線",
+          "amount": 310
+        }, {
+          "date": "2026/07/03",
+          "desc": "内藤　寛 06/08 06/11 関東クオリティチェック　高瀬展示会　小川フード社外研修 電車（国内） 大井町 大森（東京） 京浜東北線",
+          "amount": 310
+        }, {
+          "date": "2026/07/03",
+          "desc": "内藤　寛 06/08 06/11 関東クオリティチェック　高瀬展示会　小川フード社外研修 電車（国内） 大井町 品川 京浜東北線",
+          "amount": 155
+        }, {
+          "date": "2026/07/03",
+          "desc": "内藤　寛 06/08 06/11 関東クオリティチェック　高瀬展示会　小川フード社外研修 新幹線（国内） 品川 新大阪 東海旅客鉄道株式会社",
+          "amount": 14030
+        }, {
+          "date": "2026/07/03",
+          "desc": "櫻木　亮太 06/27 電車（国内） なんば 谷町九丁目 ヘルプ勤務　自宅⇒ぷ都⇒自宅 往復 大阪メトロ",
+          "amount": 380
+        }, {
+          "date": "2026/07/03",
+          "desc": "冨山　忠宏 06/18 電車（国内） なんば 心斎橋 大丸店　制服返却のため 片道 大阪メトロ",
+          "amount": 190
+        }, {
+          "date": "2026/07/03",
+          "desc": "冨山　忠宏 06/18 電車（国内） 心斎橋 梅田 曽根崎支店　取材対応 片道 大阪メトロ",
+          "amount": 240
+        }, {
+          "date": "2026/07/03",
+          "desc": "冨山　忠宏 06/18 電車（国内） 梅田 なんば 本社帰社 片道 大阪メトロ",
+          "amount": 240
+        }, {
+          "date": "2026/07/03",
+          "desc": "冨山　忠宏 06/27 電車（国内） 天下茶屋 東山（京都） イベント参加の為 往復 大阪メトロ、京阪電車、京都地下鉄",
+          "amount": 1900
+        }, {
+          "date": "2026/07/03",
+          "desc": "津﨑　卓也 06/20 電車（国内） 城北公園通 高槻 店舗勤務 往復 JR",
+          "amount": 820
+        }, {
+          "date": "2026/07/03",
+          "desc": "津﨑　卓也 06/22 電車（国内） 大阪 高槻 テナント総会 往復 JR",
+          "amount": 580
+        }, {
+          "date": "2026/07/03",
+          "desc": "津﨑　卓也 06/29 電車（国内） なんば 京橋（大阪） 京阪モールテナント総会 往復 地下鉄",
+          "amount": 480
+        }, {
+          "date": "2026/07/10",
+          "desc": "河田　勉 06/17 06/23 帰省・展示会 新幹線（国内） 新大阪 新横浜 6/17乗車　東海旅客鉄道株式会社",
+          "amount": 13700
+        }, {
+          "date": "2026/07/10",
+          "desc": "河田　勉 06/17 06/23 帰省・展示会 新幹線（国内） 新横浜 新大阪 6/23乗車　東海旅客鉄道株式会社",
+          "amount": 13700
+        }, {
+          "date": "2026/07/10",
+          "desc": "河田　勉 06/17 06/23 帰省・展示会 電車（国内） 九条（大阪） 新大阪 メトロ",
+          "amount": 290
+        }, {
+          "date": "2026/07/10",
+          "desc": "河田　勉 06/17 06/23 帰省・展示会 電車（国内） 新横浜 若葉台 JR・京王線",
+          "amount": 758
+        }, {
+          "date": "2026/07/10",
+          "desc": "河田　勉 06/17 06/23 帰省・展示会 電車（国内） ソコラ若葉台 国際展示場 小田急バス・京王線・JR・りんかい線",
+          "amount": 1150
+        }, {
+          "date": "2026/07/10",
+          "desc": "河田　勉 06/17 06/23 帰省・展示会 電車（国内） 国際展示場 池袋 りんかい線・JR",
+          "amount": 588
+        }, {
+          "date": "2026/07/10",
+          "desc": "河田　勉 06/17 06/23 帰省・展示会 電車（国内） 池袋 ソコラ若葉台 JR・京王線・小田急バス",
+          "amount": 805
+        }, {
+          "date": "2026/07/10",
+          "desc": "河田　勉 06/17 06/23 帰省・展示会 電車（国内） ソコラ若葉台 立川北 小田急バス・京王線・多摩モノレール",
+          "amount": 1636
+        }, {
+          "date": "2026/07/10",
+          "desc": "河田　勉 06/17 06/23 帰省・展示会 電車（国内） ソコラ若葉台 新横浜 小田急バス・小田急線・JR",
+          "amount": 821
+        }, {
+          "date": "2026/07/10",
+          "desc": "小山　佳昭 06/03 電車（国内） なんば 梅田 阪神百貨店 往復 大阪メトロ",
+          "amount": 480
+        }, {
+          "date": "2026/07/10",
+          "desc": "小山　佳昭 06/05 電車（国内） なんば 堺筋本町 本町 往復",
+          "amount": 380
+        }, {
+          "date": "2026/07/10",
+          "desc": "小山　佳昭 06/19 電車（国内） 大阪難波 ドーム前 京セラドーム 片道",
+          "amount": 220
+        }, {
+          "date": "2026/07/10",
+          "desc": "内藤　寛 07/02 電車（国内） なんば 猪名寺 キューピー株式会社　大阪支店 往復 大阪メトロ　JR",
+          "amount": 480
+        }, {
+          "date": "2026/07/10",
+          "desc": "櫻木　亮太 07/02 電車（国内） なんば 猪名寺 キユーピー展示会　クオリティチェック　ビル⇒キユーピー会場⇒ハービス⇒自宅 往復 大阪",
+          "amount": 960
+        }, {
+          "date": "2026/07/10",
+          "desc": "櫻木　亮太 07/04 電車（国内） なんば 谷町九丁目 ヘルプ勤務　自宅→ぷ都→自宅 往復 大阪メトロ",
+          "amount": 380
+        }, {
+          "date": "2026/07/10",
+          "desc": "河田　勉 06/03 電車（国内） 大国町 西梅田 ORA部門会懇親会参加 片道 メトロ",
+          "amount": 240
+        }, {
+          "date": "2026/07/10",
+          "desc": "河田　勉 06/03 電車（国内） 西梅田 九条（大阪） 帰宅 片道 メトロ",
+          "amount": 240
+        }, {
+          "date": "2026/07/10",
+          "desc": "河田　勉 06/30 電車（国内） 心斎橋 なんば 臨店：おでんすみ吉→本社 片道 メトロ",
+          "amount": 190
+        }, {
+          "date": "2026/07/17",
+          "desc": "櫻木　亮太 07/07 電車（国内） 南海難波 堺東 堺東　クオリティチェック　ビル⇒堺東 片道 南海電鉄",
+          "amount": 290
+        }, {
+          "date": "2026/07/17",
+          "desc": "櫻木　亮太 07/07 電車（国内） 堺東 帝塚山 堺東　クオリティチェック　堺東⇒自宅 片道 南海電鉄",
+          "amount": 240
+        }, {
+          "date": "2026/07/17",
+          "desc": "櫻木　亮太 07/13 電車（国内） 日本橋（大阪） 近鉄八尾 クオリティチェック　ビル⇒リノアス八尾 片道 近鉄",
+          "amount": 360
+        }, {
+          "date": "2026/07/17",
+          "desc": "櫻木　亮太 07/13 電車（国内） 近鉄八尾 天王寺 クオリティチェック　リノアス八尾⇒あべのキューズモール 片道 近鉄　JR",
+          "amount": 450
+        }, {
+          "date": "2026/07/17",
+          "desc": "櫻木　亮太 07/13 電車（国内） 天王寺 大国町 クオリティチェック　あべの⇒自宅 片道 大阪メトロ",
+          "amount": 190
+        }, {
+          "date": "2026/07/17",
+          "desc": "櫻木　亮太 07/14 電車（国内） なんば 京都 クオリティチェック　自宅⇒京都アバンティ 片道 大阪メトロ　JR",
+          "amount": 820
+        }, {
+          "date": "2026/07/17",
+          "desc": "櫻木　亮太 07/14 電車（国内） 京都 高槻 クオリティチェック　京都⇒阪急スクエア高槻支店 片道 JR",
+          "amount": 410
+        }, {
+          "date": "2026/07/17",
+          "desc": "櫻木　亮太 07/14 電車（国内） 高槻 なんば クオリティチェック　高槻⇒曽根崎⇒自宅 片道 JR　大阪メトロ",
+          "amount": 530
+        }, {
+          "date": "2026/07/17",
+          "desc": "冨山　忠宏 07/07 電車（国内） なんば 天王寺 あべのキューズモール店で撮影 往復 大阪メトロ",
+          "amount": 480
+        }, {
+          "date": "2026/07/17",
+          "desc": "冨山　忠宏 07/13 電車（国内） なんば 福島（大阪・ＪＲ） 朝日放送で生放送対応 片道 JR",
+          "amount": 390
+        }, {
+          "date": "2026/07/17",
+          "desc": "冨山　忠宏 07/15 電車（国内） なんば 北加賀屋 セミナ―参加 往復 大阪メトロ",
+          "amount": 480
+        }, {
+          "date": "2026/07/24",
+          "desc": "櫻木　亮太 07/18 電車（国内） なんば 谷町九丁目 ヘルプ勤務　自宅⇒ぷ都⇒自宅 往復 大阪メトロ",
+          "amount": 380
+        }, {
+          "date": "2026/07/24",
+          "desc": "櫻木　亮太 07/19 電車（国内） なんば 谷町九丁目 ヘルプ勤務　自宅⇒ぷ都⇒自宅 往復 大阪メトロ",
+          "amount": 380
+        }, {
+          "date": "2026/07/24",
+          "desc": "櫻木　亮太 07/22 電車（国内） なんば 甲子園 衛生検査前チェック　自宅⇒ららぽーと甲子園 片道 阪神電鉄",
+          "amount": 370
+        }, {
+          "date": "2026/07/24",
+          "desc": "櫻木　亮太 07/22 電車（国内） 甲子園 大阪梅田［阪神］ 衛生検査前チェック　甲子園⇒リトリート 片道 阪神電鉄",
+          "amount": 280
+        }, {
+          "date": "2026/07/24",
+          "desc": "櫻木　亮太 07/22 電車（国内） 大阪 京橋（大阪） 衛生検査前チェック・クオリティチェック　リトリート⇒京橋京阪モール支店 片道 JR",
+          "amount": 180
+        }, {
+          "date": "2026/07/24",
+          "desc": "櫻木　亮太 07/22 電車（国内） 京橋（大阪） 大阪城公園 衛生検査前チェック・クオリティチェック　京橋⇒名代 片道 JR",
+          "amount": 150
+        }, {
+          "date": "2026/07/24",
+          "desc": "櫻木　亮太 07/22 電車（国内） 大阪城公園 なんば 衛生検査前チェック・クオリティチェック　　名代⇒自宅 片道 JR　大阪メトロ",
+          "amount": 340
+        }, {
+          "date": "2026/07/31",
+          "desc": "櫻木　亮太 07/13 タクシー（国内） なんば 堂島 おはよう朝日です　出演　ビル⇒テレビ朝日 -- タックン株式会社",
+          "amount": 2100
+        }, {
+          "date": "2026/07/31",
+          "desc": "櫻木　亮太 07/13 タクシー（国内） 堂島 道頓堀 おはよう朝日です。　　テレビ朝日⇒ビル -- ダイヤ交通株式会社西",
+          "amount": 2300
+        }, {
+          "date": "2026/07/31",
+          "desc": "櫻木　亮太 07/25 電車（国内） なんば 谷町九丁目 ヘルプ勤務　自宅⇒ぷ都⇒自宅 往復 大阪メトロ",
+          "amount": 380
+        }, {
+          "date": "2026/07/31",
+          "desc": "櫻木　亮太 07/27 電車（国内） 南海難波 堺東 衛生検査前チェック　ビル⇒堺東支店 片道 南海",
+          "amount": 290
+        }, {
+          "date": "2026/07/31",
+          "desc": "櫻木　亮太 07/27 電車（国内） 堺東 帝塚山 衛生検査前チェック　堺東⇒自宅 片道 南海電鉄",
+          "amount": 240
+        }, {
+          "date": "2026/07/31",
+          "desc": "櫻木　亮太 07/28 電車（国内） なんば 西梅田 憩講習　ビル⇒ぷ北⇒ぷ日航⇒ビル 往復 大阪メトロ",
+          "amount": 480
+        }, {
+          "date": "2026/07/31",
+          "desc": "冨山　忠宏 07/23 電車（国内） 南海難波 中ふ頭（大阪） インテックス大阪展示会参加 往復 大阪メトロ",
+          "amount": 580
+        }, {
+          "date": "2026/07/31",
+          "desc": "冨山　忠宏 07/29 電車（国内） なんば 梅田 阪神梅田店への臨店 往復 大阪メトロ",
+          "amount": 480
+        }, {
+          "date": "2026/07/31",
+          "desc": "櫻木　亮太 07/29 電車（国内） 日本橋（大阪） 谷町九丁目 憩コース　講習　ビル⇒ぷ都⇒ビル 往復 大阪メトロ",
+          "amount": 380
+        }, {
+          "date": "2026/07/31",
+          "desc": "内税起票額　119,925",
+          "amount": -10268
+        }],
+        "乗用車経費": [{
+          "date": "2026/07/03",
+          "desc": "内藤　寛 06/25 ガソリン代 本社 キューピー泉佐野工場 キューピー社外研修ガソリン代 -- 日商有田株式会社",
+          "amount": 1812
+        }, {
+          "date": "2026/07/31",
+          "desc": "高速道路利用額（ＢＵカード）　6月分　（営業推進本部）　協同組合　ビジネスアーバン",
+          "amount": 5010
+        }, {
+          "date": "2026/07/31",
+          "desc": "内税起票額　6,822",
+          "amount": -619
+        }],
+        "通勤手当": [{
+          "date": "2026/07/31",
+          "desc": "交通費　社員 給与 7月度 営業推進本部 8人",
+          "amount": 108510
+        }, {
+          "date": "2026/07/31",
+          "desc": "内税起票額　108,510",
+          "amount": -9864
+        }]
+      },
+      "通信費": {
+        "電話": [{
+          "date": "2026/07/27",
+          "desc": "iPhone使用料　5月分　5361　（営業推進本部）　㈱インボイス",
+          "amount": 5954
+        }, {
+          "date": "2026/07/31",
+          "desc": "内税起票額　5,954",
+          "amount": -541
+        }],
+        "郵便切手": [{
+          "date": "2026/07/31",
+          "desc": "7/1 日本郵便株式会社 レターパックライト　5点 営業推進",
+          "amount": 2150
+        }, {
+          "date": "2026/07/31",
+          "desc": "内税起票額　2,150",
+          "amount": -195
+        }],
+        "ＩＴ関連": [{
+          "date": "2026/07/27",
+          "desc": "千房㈱　㈱インボイス　Ｗｉ－Ｆｉ　5月分　9049　（営業推進本部）",
+          "amount": 3534
+        }, {
+          "date": "2026/07/27",
+          "desc": "Ｗｉ－Ｆｉ使用料　5月分　9841　（営業推進本部）　㈱インボイス",
+          "amount": 3534
+        }, {
+          "date": "2026/07/27",
+          "desc": "Ｗｉ－Ｆｉ使用料　5月分　8918　（営業推進本部）　㈱インボイス",
+          "amount": 3534
+        }, {
+          "date": "2026/07/27",
+          "desc": "Ｗｉ－Ｆｉ使用料　5月分　3150　（営業推進本部）　㈱インボイス",
+          "amount": 3534
+        }, {
+          "date": "2026/07/27",
+          "desc": "Ｗｉ－Ｆｉ使用料　5月分　9807　（営業推進本部）　㈱インボイス",
+          "amount": 3534
+        }, {
+          "date": "2026/07/27",
+          "desc": "Ｗｉ－Ｆｉ使用料　5月分　4149　（営業推進本部）　㈱インボイス",
+          "amount": 3534
+        }, {
+          "date": "2026/07/27",
+          "desc": "Ｗｉ－Ｆｉ使用料　5月分　8504　（営業推進本部）　㈱インボイス",
+          "amount": 3534
+        }, {
+          "date": "2026/07/31",
+          "desc": "内税起票額　24,738",
+          "amount": -2247
+        }]
+      },
+      "交際費": {
+        "交際費・課税": [{
+          "date": "2026/07/10",
+          "desc": "6/21　ぷれじでんと大丸心斎橋店　ウェルカムドリンク　㈱掬正 吉村様、ご家族3名　(営業推進本部)",
+          "amount": 3366
+        }, {
+          "date": "2026/07/31",
+          "desc": "内税起票額　3,366",
+          "amount": -306
+        }]
+      },
+      "消耗品費": {
+        "その他": [{
+          "date": "2026/07/17",
+          "desc": "6/25 ビックカメラ マウス 営業推進",
+          "amount": 2080
+        }, {
+          "date": "2026/07/31",
+          "desc": "内税起票額　2,080",
+          "amount": -189
+        }]
+      },
+      "採用教育費": {
+        "教育研修費": [{
+          "date": "2026/07/17",
+          "desc": "7/15 岡山フードサービス 岡山フードサービス主催セミナー参加 営業推進",
+          "amount": 2000
+        }, {
+          "date": "2026/07/31",
+          "desc": "7/29 掬正 掬正主催の日本酒提案会に参加 営業推進",
+          "amount": 1000
+        }, {
+          "date": "2026/07/31",
+          "desc": "内税起票額　3,000",
+          "amount": -271
+        }]
+      }
+    }
+  }
+};
+
+/* ------------------------------------------------------------------ */
+/*  予算データ（営業推進本部予算.xlsx「当期予算」シートより抽出）      */
+/*  単位：円（元データは千円のため1,000倍済み）。月番号(1〜12)をキー   */
+/*  にしており、実績側の "YYYY-MM" キーから月番号を取り出して参照する  */
+/* ------------------------------------------------------------------ */
+
+const BUDGET_DATA = {
+  寮費: {
+    4: 77000,
+    5: 77000,
+    6: 77000,
+    7: 77000,
+    8: 77000,
+    9: 97000,
+    10: 77000,
+    11: 77000,
+    12: 77000,
+    1: 77000,
+    2: 77000,
+    3: 77000
+  },
+  支払手数料: {
+    4: 50000,
+    5: 50000,
+    6: 50000,
+    7: 50000,
+    8: 50000,
+    9: 50000,
+    10: 50000,
+    11: 50000,
+    12: 50000,
+    1: 50000,
+    2: 50000,
+    3: 50000
+  },
+  旅費交通費: {
+    4: 225000,
+    5: 265000,
+    6: 285000,
+    7: 225000,
+    8: 225000,
+    9: 325000,
+    10: 225000,
+    11: 265000,
+    12: 325000,
+    1: 225000,
+    2: 225000,
+    3: 325000
+  },
+  通信費: {
+    4: 29000,
+    5: 29000,
+    6: 29000,
+    7: 29000,
+    8: 29000,
+    9: 29000,
+    10: 29000,
+    11: 29000,
+    12: 29000,
+    1: 29000,
+    2: 29000,
+    3: 29000
+  },
+  交際費: {
+    4: 20000,
+    5: 20000,
+    6: 20000,
+    7: 20000,
+    8: 20000,
+    9: 20000,
+    10: 20000,
+    11: 20000,
+    12: 20000,
+    1: 20000,
+    2: 20000,
+    3: 20000
+  },
+  消耗品費: {
+    4: 0,
+    5: 0,
+    6: 0,
+    7: 0,
+    8: 0,
+    9: 0,
+    10: 0,
+    11: 0,
+    12: 0,
+    1: 0,
+    2: 0,
+    3: 0
+  },
+  研究費: {
+    4: 40000,
+    5: 0,
+    6: 40000,
+    7: 0,
+    8: 40000,
+    9: 0,
+    10: 40000,
+    11: 0,
+    12: 40000,
+    1: 0,
+    2: 40000,
+    3: 0
+  },
+  諸会費: {
+    4: 10000,
+    5: 10000,
+    6: 10000,
+    7: 10000,
+    8: 10000,
+    9: 10000,
+    10: 10000,
+    11: 10000,
+    12: 10000,
+    1: 10000,
+    2: 10000,
+    3: 10000
+  },
+  採用教育費: {
+    4: 0,
+    5: 0,
+    6: 0,
+    7: 0,
+    8: 0,
+    9: 0,
+    10: 0,
+    11: 0,
+    12: 0,
+    1: 0,
+    2: 0,
+    3: 0
+  }
+};
+const monthNumOf = key => parseInt(key.split("-")[1], 10);
+const budgetFor = (account, key) => BUDGET_DATA[account]?.[monthNumOf(key)];
+const hasBudget = account => Object.prototype.hasOwnProperty.call(BUDGET_DATA, account);
+
+/* ------------------------------------------------------------------ */
+/*  フォント読み込み + グローバルスタイル                              */
+/* ------------------------------------------------------------------ */
+
+function GlobalStyle() {
+  useEffect(() => {
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = "https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;700;800&family=Noto+Sans+JP:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap";
+    document.head.appendChild(link);
+    return () => document.head.removeChild(link);
+  }, []);
+  return /*#__PURE__*/React.createElement("style", null, `
+      :root {
+        --ink: #1C2333;
+        --ink-soft: #2B3448;
+        --paper: #F7F3EA;
+        --card: #FFFFFF;
+        --line: #E4DDCB;
+        --accent: #A9402A;
+        --accent-soft: #F3DCD2;
+        --text-main: #262019;
+        --text-sub: #766E62;
+        --good: #3F6B4C;
+      }
+      .font-display { font-family: 'Shippori Mincho', serif; }
+      .font-body { font-family: 'Noto Sans JP', sans-serif; }
+      .font-mono { font-family: 'JetBrains Mono', monospace; font-variant-numeric: tabular-nums; }
+      .stamp {
+        border: 2.5px solid var(--accent);
+        color: var(--accent);
+        border-radius: 9999px;
+        transform: rotate(-7deg);
+      }
+      .ledger-scroll::-webkit-scrollbar { height: 8px; width: 8px; }
+      .ledger-scroll::-webkit-scrollbar-thumb { background: #D8CFBB; border-radius: 4px; }
+      .ledger-scroll::-webkit-scrollbar-track { background: transparent; }
+      @keyframes fadeIn { from { opacity: 0; transform: translateY(4px);} to { opacity:1; transform:translateY(0);} }
+      .fade-in { animation: fadeIn .25s ease-out; }
+    `);
+}
+
+/* ------------------------------------------------------------------ */
+/*  サイドバー                                                         */
+/* ------------------------------------------------------------------ */
+
+function SyncBadge({
+  syncStatus
+}) {
+  const cfg = {
+    connected: {
+      dot: "#4ADE80",
+      label: "共有スプレッドシートに接続中"
+    },
+    "local-only": {
+      dot: "#F59E0B",
+      label: "接続エラー：ローカル保存のみ"
+    },
+    unconfigured: {
+      dot: "#6B7280",
+      label: "共有未設定：ローカル保存のみ"
+    },
+    checking: {
+      dot: "#6B7280",
+      label: "接続確認中…"
+    }
+  }[syncStatus] || {
+    dot: "#6B7280",
+    label: ""
+  };
+  return /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-1.5 text-[10px]",
+    style: {
+      color: "#8B93A7"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "inline-block rounded-full shrink-0",
+    style: {
+      width: 6,
+      height: 6,
+      background: cfg.dot
+    }
+  }), cfg.label);
+}
+function Sidebar({
+  page,
+  setPage,
+  monthCount,
+  latestLabel,
+  syncStatus
+}) {
+  const items = [{
+    id: "dashboard",
+    label: "ダッシュボード",
+    icon: LayoutDashboard
+  }, {
+    id: "budget",
+    label: "予算・実績比較",
+    icon: Scale
+  }, {
+    id: "pivot",
+    label: "科目別・月次一覧",
+    icon: Table2
+  }, {
+    id: "detail",
+    label: "項目別詳細",
+    icon: Layers
+  }, {
+    id: "upload",
+    label: "資料アップロード",
+    icon: UploadCloud
+  }];
+  return /*#__PURE__*/React.createElement("div", {
+    className: "flex md:flex-col w-full md:w-64 shrink-0 font-body",
+    style: {
+      background: "var(--ink)"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "px-5 pt-6 pb-5 hidden md:block"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-3"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "stamp w-11 h-11 flex items-center justify-center font-display text-lg shrink-0",
+    style: {
+      background: "rgba(169,64,42,0.08)"
+    }
+  }, "費"), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "text-white font-display text-[15px] leading-tight tracking-wide"
+  }, "販管費管理"), /*#__PURE__*/React.createElement("div", {
+    className: "text-[11px]",
+    style: {
+      color: "#8B93A7"
+    }
+  }, "営業推進本部"))), /*#__PURE__*/React.createElement("div", {
+    className: "mt-4 text-[11px] px-3 py-2 rounded-md space-y-1.5",
+    style: {
+      background: "rgba(255,255,255,0.06)",
+      color: "#B7BECF"
+    }
+  }, /*#__PURE__*/React.createElement("div", null, "取込済み：", monthCount, "ヶ月分", latestLabel && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("br", null), "最新：", latestLabel)), /*#__PURE__*/React.createElement(SyncBadge, {
+    syncStatus: syncStatus
+  }))), /*#__PURE__*/React.createElement("nav", {
+    className: "flex md:flex-col flex-1 md:mt-2 md:px-3 gap-1 px-2 py-2 md:py-0 overflow-x-auto"
+  }, items.map(it => {
+    const Icon = it.icon;
+    const active = page === it.id;
+    return /*#__PURE__*/React.createElement("button", {
+      key: it.id,
+      onClick: () => setPage(it.id),
+      className: "flex items-center gap-2.5 px-3.5 py-2.5 rounded-lg text-sm whitespace-nowrap transition-colors",
+      style: {
+        background: active ? "var(--accent)" : "transparent",
+        color: active ? "#fff" : "#B7BECF",
+        fontWeight: active ? 600 : 400
+      }
+    }, /*#__PURE__*/React.createElement(Icon, {
+      size: 16
+    }), it.label);
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "hidden md:block px-5 py-4 text-[11px]",
+    style: {
+      color: "#606A82"
+    }
+  }, "千房ホールディングス株式会社"));
+}
+
+/* ------------------------------------------------------------------ */
+/*  ダッシュボード                                                      */
+/* ------------------------------------------------------------------ */
+
+function Dashboard({
+  monthsData,
+  sortedKeys,
+  accountOrder
+}) {
+  const latestKey = sortedKeys[sortedKeys.length - 1];
+  const prevKey = sortedKeys[sortedKeys.length - 2];
+  const latest = latestKey ? monthsData[latestKey] : null;
+  const prev = prevKey ? monthsData[prevKey] : null;
+  const latestTotal = latest ? Object.values(latest.totals).reduce((a, b) => a + b, 0) : 0;
+  const prevTotal = prev ? Object.values(prev.totals).reduce((a, b) => a + b, 0) : null;
+  const delta = prevTotal !== null ? latestTotal - prevTotal : null;
+  const deltaPct = prevTotal ? (latestTotal - prevTotal) / prevTotal * 100 : null;
+  const chartData = sortedKeys.map(k => {
+    const d = monthsData[k];
+    return {
+      label: shortMonthLabel(d.year, d.month),
+      合計: Object.values(d.totals).reduce((a, b) => a + b, 0)
+    };
+  });
+  const breakdown = latest ? accountOrder.filter(a => latest.totals[a] !== undefined).map(a => ({
+    name: a,
+    value: latest.totals[a]
+  })).sort((a, b) => b.value - a.value) : [];
+  const maxBreakdown = breakdown.length ? breakdown[0].value : 1;
+  return /*#__PURE__*/React.createElement("div", {
+    className: "fade-in space-y-6"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "grid grid-cols-1 sm:grid-cols-3 gap-4"
+  }, /*#__PURE__*/React.createElement(StatCard, {
+    label: "取込データ",
+    value: `${sortedKeys.length}ヶ月分`,
+    sub: sortedKeys.length ? `${monthLabel(monthsData[sortedKeys[0]].year, monthsData[sortedKeys[0]].month)} 〜 ${monthLabel(latest.year, latest.month)}` : "未取込"
+  }), /*#__PURE__*/React.createElement(StatCard, {
+    label: latest ? `${monthLabel(latest.year, latest.month)} 合計` : "最新月 合計",
+    value: latest ? `¥${yen(latestTotal)}` : "－",
+    sub: latest ? `出典：${latest.sourceFile}` : ""
+  }), /*#__PURE__*/React.createElement(StatCard, {
+    label: "前月比",
+    value: delta === null ? "－" : `${delta >= 0 ? "+" : ""}¥${yen(Math.abs(delta) * (delta < 0 ? -1 : 1))}`,
+    sub: deltaPct === null ? "比較対象なし" : `${deltaPct >= 0 ? "+" : ""}${deltaPct.toFixed(1)}%`,
+    trend: delta === null ? null : delta >= 0 ? "up" : "down"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "grid grid-cols-1 lg:grid-cols-5 gap-4"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "lg:col-span-3 rounded-xl p-5",
+    style: {
+      background: "var(--card)",
+      border: "1px solid var(--line)"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "text-sm font-semibold mb-4",
+    style: {
+      color: "var(--text-main)"
+    }
+  }, "月次推移"), chartData.length === 0 ? /*#__PURE__*/React.createElement(EmptyNote, {
+    text: "まだデータがありません。「資料アップロード」から取り込んでください。"
+  }) : /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: "100%",
+      height: 220
+    }
+  }, /*#__PURE__*/React.createElement(ResponsiveContainer, null, /*#__PURE__*/React.createElement(BarChart, {
+    data: chartData,
+    margin: {
+      top: 4,
+      right: 8,
+      left: -12,
+      bottom: 0
+    }
+  }, /*#__PURE__*/React.createElement(CartesianGrid, {
+    vertical: false,
+    stroke: "#EEE7D8"
+  }), /*#__PURE__*/React.createElement(XAxis, {
+    dataKey: "label",
+    tick: {
+      fontSize: 12,
+      fill: "#766E62"
+    },
+    axisLine: {
+      stroke: "#E4DDCB"
+    },
+    tickLine: false
+  }), /*#__PURE__*/React.createElement(YAxis, {
+    tick: {
+      fontSize: 11,
+      fill: "#766E62"
+    },
+    axisLine: false,
+    tickLine: false,
+    tickFormatter: v => `${Math.round(v / 1000)}k`
+  }), /*#__PURE__*/React.createElement(Tooltip, {
+    formatter: v => [`¥${yen(v)}`, "合計"],
+    contentStyle: {
+      borderRadius: 8,
+      border: "1px solid #E4DDCB",
+      fontSize: 12
+    }
+  }), /*#__PURE__*/React.createElement(Bar, {
+    dataKey: "合計",
+    fill: "#A9402A",
+    radius: [4, 4, 0, 0]
+  }))))), /*#__PURE__*/React.createElement("div", {
+    className: "lg:col-span-2 rounded-xl p-5",
+    style: {
+      background: "var(--card)",
+      border: "1px solid var(--line)"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "text-sm font-semibold mb-4",
+    style: {
+      color: "var(--text-main)"
+    }
+  }, latest ? `${monthLabel(latest.year, latest.month)} 科目別内訳` : "科目別内訳"), breakdown.length === 0 ? /*#__PURE__*/React.createElement(EmptyNote, {
+    text: "データがありません"
+  }) : /*#__PURE__*/React.createElement("div", {
+    className: "space-y-3"
+  }, breakdown.map(b => /*#__PURE__*/React.createElement("div", {
+    key: b.name
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex justify-between text-xs mb-1",
+    style: {
+      color: "var(--text-sub)"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "font-body"
+  }, b.name), /*#__PURE__*/React.createElement("span", {
+    className: "font-mono"
+  }, "¥", yen(b.value))), /*#__PURE__*/React.createElement("div", {
+    className: "h-2 rounded-full",
+    style: {
+      background: "#F0EADC"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "h-2 rounded-full",
+    style: {
+      width: `${Math.max(3, b.value / maxBreakdown * 100)}%`,
+      background: "var(--accent)"
+    }
+  }))))))));
+}
+function StatCard({
+  label,
+  value,
+  sub,
+  trend
+}) {
+  return /*#__PURE__*/React.createElement("div", {
+    className: "rounded-xl p-5",
+    style: {
+      background: "var(--card)",
+      border: "1px solid var(--line)"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "text-xs mb-2",
+    style: {
+      color: "var(--text-sub)"
+    }
+  }, label), /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-2"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "font-mono text-2xl font-semibold",
+    style: {
+      color: "var(--text-main)"
+    }
+  }, value), trend && /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: trend === "up" ? "var(--accent)" : "var(--good)"
+    }
+  }, trend === "up" ? /*#__PURE__*/React.createElement(TrendingUp, {
+    size: 16
+  }) : /*#__PURE__*/React.createElement(TrendingDown, {
+    size: 16
+  }))), sub && /*#__PURE__*/React.createElement("div", {
+    className: "text-[11px] mt-1.5",
+    style: {
+      color: "var(--text-sub)"
+    }
+  }, sub));
+}
+function EmptyNote({
+  text
+}) {
+  return /*#__PURE__*/React.createElement("div", {
+    className: "text-xs py-8 text-center rounded-lg",
+    style: {
+      color: "var(--text-sub)",
+      background: "#FBF8F1"
+    }
+  }, text);
+}
+
+/* ------------------------------------------------------------------ */
+/*  科目別・月次一覧（ピボットテーブル）                                */
+/* ------------------------------------------------------------------ */
+
+function PivotPage({
+  monthsData,
+  sortedKeys,
+  accountOrder
+}) {
+  const [expanded, setExpanded] = useState(new Set());
+  const toggle = acc => {
+    setExpanded(prev => {
+      const next = new Set(prev);
+      next.has(acc) ? next.delete(acc) : next.add(acc);
+      return next;
+    });
+  };
+  const rowTotal = acc => sortedKeys.reduce((sum, k) => sum + (monthsData[k].totals[acc] || 0), 0);
+  const colTotal = k => Object.values(monthsData[k].totals).reduce((a, b) => a + b, 0);
+  const grandTotal = sortedKeys.reduce((sum, k) => sum + colTotal(k), 0);
+  const subKeysFor = acc => {
+    const set = new Set();
+    sortedKeys.forEach(k => {
+      const d = monthsData[k].detail?.[acc];
+      if (d) Object.keys(d).forEach(s => set.add(s));
+    });
+    return Array.from(set);
+  };
+  const handleDownload = () => {
+    const header = ["科目", ...sortedKeys.map(k => monthLabel(monthsData[k].year, monthsData[k].month)), "合計"];
+    const rows = [header];
+    accountOrder.forEach(acc => {
+      rows.push([acc, ...sortedKeys.map(k => monthsData[k].totals[acc] ?? 0), rowTotal(acc)]);
+    });
+    rows.push(["合計", ...sortedKeys.map(k => colTotal(k)), grandTotal]);
+    downloadCsv(`販管費_科目別月次一覧_${sortedKeys[0] || ""}-${sortedKeys[sortedKeys.length - 1] || ""}.csv`, rows);
+  };
+  if (sortedKeys.length === 0) {
+    return /*#__PURE__*/React.createElement("div", {
+      className: "fade-in rounded-xl p-10",
+      style: {
+        background: "var(--card)",
+        border: "1px solid var(--line)"
+      }
+    }, /*#__PURE__*/React.createElement(EmptyNote, {
+      text: "まだデータがありません。「資料アップロード」ページから月次の資料を取り込んでください。"
+    }));
+  }
+  return /*#__PURE__*/React.createElement("div", {
+    className: "fade-in space-y-4"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between flex-wrap gap-3"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "text-sm",
+    style: {
+      color: "var(--text-sub)"
+    }
+  }, "科目名クリックで細目の内訳を展開できます"), /*#__PURE__*/React.createElement("button", {
+    onClick: handleDownload,
+    className: "flex items-center gap-2 text-sm px-4 py-2 rounded-lg text-white",
+    style: {
+      background: "var(--ink)"
+    }
+  }, /*#__PURE__*/React.createElement(Download, {
+    size: 15
+  }), "CSVダウンロード")), /*#__PURE__*/React.createElement("div", {
+    className: "rounded-xl overflow-hidden",
+    style: {
+      background: "var(--card)",
+      border: "1px solid var(--line)"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "overflow-x-auto ledger-scroll"
+  }, /*#__PURE__*/React.createElement("table", {
+    className: "w-full text-sm font-body",
+    style: {
+      minWidth: 560 + sortedKeys.length * 110
+    }
+  }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", {
+    style: {
+      background: "#FBF8F1",
+      borderBottom: "1px solid var(--line)"
+    }
+  }, /*#__PURE__*/React.createElement("th", {
+    className: "text-left py-3 px-4 font-semibold sticky left-0",
+    style: {
+      background: "#FBF8F1",
+      color: "var(--text-main)",
+      minWidth: 200
+    }
+  }, "科目"), sortedKeys.map(k => /*#__PURE__*/React.createElement("th", {
+    key: k,
+    className: "text-right py-3 px-4 font-semibold whitespace-nowrap",
+    style: {
+      color: "var(--text-main)"
+    }
+  }, monthLabel(monthsData[k].year, monthsData[k].month))), /*#__PURE__*/React.createElement("th", {
+    className: "text-right py-3 px-4 font-semibold whitespace-nowrap",
+    style: {
+      color: "var(--accent)"
+    }
+  }, "合計"))), /*#__PURE__*/React.createElement("tbody", null, accountOrder.map(acc => {
+    const subs = subKeysFor(acc);
+    const isOpen = expanded.has(acc);
+    return /*#__PURE__*/React.createElement(React.Fragment, {
+      key: acc
+    }, /*#__PURE__*/React.createElement("tr", {
+      className: "cursor-pointer",
+      style: {
+        borderBottom: "1px solid #F0EADC"
+      },
+      onClick: () => toggle(acc)
+    }, /*#__PURE__*/React.createElement("td", {
+      className: "py-2.5 px-4 sticky left-0",
+      style: {
+        background: "var(--card)"
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center gap-1.5"
+    }, isOpen ? /*#__PURE__*/React.createElement(ChevronDown, {
+      size: 14,
+      color: "#A39A89"
+    }) : /*#__PURE__*/React.createElement(ChevronRight, {
+      size: 14,
+      color: "#A39A89"
+    }), /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: "var(--text-main)"
+      }
+    }, acc))), sortedKeys.map(k => /*#__PURE__*/React.createElement("td", {
+      key: k,
+      className: "text-right py-2.5 px-4 font-mono",
+      style: {
+        color: "var(--text-main)"
+      }
+    }, yen(monthsData[k].totals[acc]))), /*#__PURE__*/React.createElement("td", {
+      className: "text-right py-2.5 px-4 font-mono font-semibold",
+      style: {
+        color: "var(--accent)"
+      }
+    }, yen(rowTotal(acc)))), isOpen && subs.map(sub => /*#__PURE__*/React.createElement("tr", {
+      key: acc + sub,
+      style: {
+        background: "#FCFAF4",
+        borderBottom: "1px solid #F3EEE1"
+      }
+    }, /*#__PURE__*/React.createElement("td", {
+      className: "py-2 px-4 pl-9 sticky left-0 text-xs",
+      style: {
+        background: "#FCFAF4",
+        color: "var(--text-sub)"
+      }
+    }, sub), sortedKeys.map(k => /*#__PURE__*/React.createElement("td", {
+      key: k,
+      className: "text-right py-2 px-4 font-mono text-xs",
+      style: {
+        color: "var(--text-sub)"
+      }
+    }, yen(monthsData[k].detail?.[acc]?.[sub]))), /*#__PURE__*/React.createElement("td", {
+      className: "text-right py-2 px-4 font-mono text-xs",
+      style: {
+        color: "var(--text-sub)"
+      }
+    }, yen(sortedKeys.reduce((s, k) => s + (monthsData[k].detail?.[acc]?.[sub] || 0), 0))))));
+  })), /*#__PURE__*/React.createElement("tfoot", null, /*#__PURE__*/React.createElement("tr", {
+    style: {
+      borderTop: "2px solid var(--ink)"
+    }
+  }, /*#__PURE__*/React.createElement("td", {
+    className: "py-3 px-4 font-semibold sticky left-0",
+    style: {
+      background: "var(--card)",
+      color: "var(--text-main)"
+    }
+  }, "合計"), sortedKeys.map(k => /*#__PURE__*/React.createElement("td", {
+    key: k,
+    className: "text-right py-3 px-4 font-mono font-semibold",
+    style: {
+      color: "var(--text-main)"
+    }
+  }, yen(colTotal(k)))), /*#__PURE__*/React.createElement("td", {
+    className: "text-right py-3 px-4 font-mono font-bold",
+    style: {
+      color: "var(--accent)"
+    }
+  }, yen(grandTotal))))))));
+}
+
+/* ------------------------------------------------------------------ */
+/*  予算・実績比較ページ                                                */
+/* ------------------------------------------------------------------ */
+
+function VarianceTag({
+  diff
+}) {
+  if (diff === null || diff === undefined) return /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: "var(--text-sub)"
+    }
+  }, "－");
+  const over = diff > 0;
+  const flat = diff === 0;
+  const color = flat ? "var(--text-sub)" : over ? "var(--accent)" : "var(--good)";
+  const Icon = flat ? Minus : over ? ArrowUpRight : ArrowDownRight;
+  return /*#__PURE__*/React.createElement("span", {
+    className: "inline-flex items-center gap-1 font-mono",
+    style: {
+      color
+    }
+  }, /*#__PURE__*/React.createElement(Icon, {
+    size: 12
+  }), over ? "+" : "", yen(diff));
+}
+function BudgetComparisonPage({
+  monthsData,
+  sortedKeys,
+  accountOrder
+}) {
+  const budgetAccounts = useMemo(() => accountOrder.filter(hasBudget), [accountOrder]);
+  const [selectedKey, setSelectedKey] = useState(sortedKeys[sortedKeys.length - 1] || "");
+  const [mode, setMode] = useState("single"); // "single" | "cumulative"
+
+  useEffect(() => {
+    if (!selectedKey && sortedKeys.length) setSelectedKey(sortedKeys[sortedKeys.length - 1]);
+    if (selectedKey && !sortedKeys.includes(selectedKey) && sortedKeys.length) {
+      setSelectedKey(sortedKeys[sortedKeys.length - 1]);
+    }
+  }, [sortedKeys, selectedKey]);
+  if (sortedKeys.length === 0) {
+    return /*#__PURE__*/React.createElement("div", {
+      className: "fade-in rounded-xl p-10",
+      style: {
+        background: "var(--card)",
+        border: "1px solid var(--line)"
+      }
+    }, /*#__PURE__*/React.createElement(EmptyNote, {
+      text: "実績データがまだありません。「資料アップロード」から取り込んでください。"
+    }));
+  }
+  const selIdx = sortedKeys.indexOf(selectedKey);
+  const keysInScope = mode === "cumulative" ? sortedKeys.slice(0, selIdx + 1) : [selectedKey];
+  const rows = budgetAccounts.map(acc => {
+    const actual = keysInScope.reduce((s, k) => s + (monthsData[k].totals[acc] || 0), 0);
+    const budget = keysInScope.reduce((s, k) => s + (budgetFor(acc, k) || 0), 0);
+    const diff = actual - budget;
+    const pct = budget !== 0 ? diff / budget * 100 : actual !== 0 ? 100 : 0;
+    return {
+      account: acc,
+      actual,
+      budget,
+      diff,
+      pct
+    };
+  });
+  const totalActual = rows.reduce((s, r) => s + r.actual, 0);
+  const totalBudget = rows.reduce((s, r) => s + r.budget, 0);
+  const totalDiff = totalActual - totalBudget;
+  const totalPct = totalBudget !== 0 ? totalDiff / totalBudget * 100 : 0;
+  const chartData = rows.map(r => ({
+    name: r.account,
+    予算: r.budget,
+    実績: r.actual
+  }));
+  const handleDownload = () => {
+    const header = ["科目", "予算", "実績", "差異（実績-予算）", "差異率(%)"];
+    const csvRows = [header];
+    rows.forEach(r => csvRows.push([r.account, r.budget, r.actual, r.diff, r.pct.toFixed(1)]));
+    csvRows.push(["合計", totalBudget, totalActual, totalDiff, totalPct.toFixed(1)]);
+    const scopeLabel = mode === "cumulative" ? `累計_〜${monthLabel(monthsData[selectedKey]?.year, monthsData[selectedKey]?.month)}` : monthLabel(monthsData[selectedKey]?.year, monthsData[selectedKey]?.month);
+    downloadCsv(`予算実績差異_${scopeLabel}.csv`, csvRows);
+  };
+  return /*#__PURE__*/React.createElement("div", {
+    className: "fade-in space-y-5"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-wrap items-center justify-between gap-3"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-2 flex-wrap"
+  }, /*#__PURE__*/React.createElement("select", {
+    value: selectedKey,
+    onChange: e => setSelectedKey(e.target.value),
+    className: "text-sm px-3 py-2 rounded-lg font-body",
+    style: {
+      border: "1px solid var(--line)",
+      background: "var(--card)",
+      color: "var(--text-main)"
+    }
+  }, sortedKeys.map(k => /*#__PURE__*/React.createElement("option", {
+    key: k,
+    value: k
+  }, monthLabel(monthsData[k].year, monthsData[k].month)))), /*#__PURE__*/React.createElement("div", {
+    className: "flex rounded-lg overflow-hidden",
+    style: {
+      border: "1px solid var(--line)"
+    }
+  }, [{
+    id: "single",
+    label: "単月"
+  }, {
+    id: "cumulative",
+    label: "期首からの累計"
+  }].map(m => /*#__PURE__*/React.createElement("button", {
+    key: m.id,
+    onClick: () => setMode(m.id),
+    className: "text-sm px-3.5 py-2",
+    style: {
+      background: mode === m.id ? "var(--ink)" : "var(--card)",
+      color: mode === m.id ? "#fff" : "var(--text-sub)"
+    }
+  }, m.label)))), /*#__PURE__*/React.createElement("button", {
+    onClick: handleDownload,
+    className: "flex items-center gap-2 text-sm px-4 py-2 rounded-lg text-white",
+    style: {
+      background: "var(--ink)"
+    }
+  }, /*#__PURE__*/React.createElement(Download, {
+    size: 15
+  }), "CSVダウンロード")), /*#__PURE__*/React.createElement("div", {
+    className: "grid grid-cols-1 sm:grid-cols-3 gap-4"
+  }, /*#__PURE__*/React.createElement(StatCard, {
+    label: "予算",
+    value: `¥${yen(totalBudget)}`,
+    sub: "対象科目合計"
+  }), /*#__PURE__*/React.createElement(StatCard, {
+    label: "実績",
+    value: `¥${yen(totalActual)}`,
+    sub: "対象科目合計"
+  }), /*#__PURE__*/React.createElement(StatCard, {
+    label: "差異（実績−予算）",
+    value: `${totalDiff >= 0 ? "+" : ""}¥${yen(totalDiff)}`,
+    sub: `${totalPct >= 0 ? "+" : ""}${totalPct.toFixed(1)}%`,
+    trend: totalDiff === 0 ? null : totalDiff > 0 ? "up" : "down"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "text-[11px] px-4 py-2.5 rounded-lg",
+    style: {
+      background: "#FBF8F1",
+      color: "var(--text-sub)",
+      border: "1px solid var(--line)"
+    }
+  }, "※ 予算比較の対象は現在取り込んでいる実績データの科目（", budgetAccounts.length, "科目）に限ります。社員給料・法定福利費など、この元帳に含まれない予算科目は対象外です。"), /*#__PURE__*/React.createElement("div", {
+    className: "rounded-xl p-5",
+    style: {
+      background: "var(--card)",
+      border: "1px solid var(--line)"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "text-sm font-semibold mb-4",
+    style: {
+      color: "var(--text-main)"
+    }
+  }, "科目別 予算 vs 実績"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: "100%",
+      height: Math.max(220, chartData.length * 46)
+    }
+  }, /*#__PURE__*/React.createElement(ResponsiveContainer, null, /*#__PURE__*/React.createElement(BarChart, {
+    data: chartData,
+    layout: "vertical",
+    margin: {
+      top: 4,
+      right: 24,
+      left: 8,
+      bottom: 0
+    }
+  }, /*#__PURE__*/React.createElement(CartesianGrid, {
+    horizontal: false,
+    stroke: "#EEE7D8"
+  }), /*#__PURE__*/React.createElement(XAxis, {
+    type: "number",
+    tick: {
+      fontSize: 11,
+      fill: "#766E62"
+    },
+    axisLine: {
+      stroke: "#E4DDCB"
+    },
+    tickLine: false,
+    tickFormatter: v => `${Math.round(v / 1000)}k`
+  }), /*#__PURE__*/React.createElement(YAxis, {
+    type: "category",
+    dataKey: "name",
+    width: 92,
+    tick: {
+      fontSize: 12,
+      fill: "#262019"
+    },
+    axisLine: false,
+    tickLine: false
+  }), /*#__PURE__*/React.createElement(Tooltip, {
+    formatter: v => `¥${yen(v)}`,
+    contentStyle: {
+      borderRadius: 8,
+      border: "1px solid #E4DDCB",
+      fontSize: 12
+    }
+  }), /*#__PURE__*/React.createElement(Legend, {
+    wrapperStyle: {
+      fontSize: 12
+    }
+  }), /*#__PURE__*/React.createElement(Bar, {
+    dataKey: "予算",
+    fill: "#C9BFA8",
+    radius: [0, 3, 3, 0],
+    barSize: 13
+  }), /*#__PURE__*/React.createElement(Bar, {
+    dataKey: "実績",
+    fill: "#A9402A",
+    radius: [0, 3, 3, 0],
+    barSize: 13
+  }))))), /*#__PURE__*/React.createElement("div", {
+    className: "rounded-xl overflow-hidden",
+    style: {
+      background: "var(--card)",
+      border: "1px solid var(--line)"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "overflow-x-auto ledger-scroll"
+  }, /*#__PURE__*/React.createElement("table", {
+    className: "w-full text-sm font-body"
+  }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", {
+    style: {
+      background: "#FBF8F1",
+      borderBottom: "1px solid var(--line)"
+    }
+  }, /*#__PURE__*/React.createElement("th", {
+    className: "text-left py-3 px-4 font-semibold",
+    style: {
+      color: "var(--text-main)"
+    }
+  }, "科目"), /*#__PURE__*/React.createElement("th", {
+    className: "text-right py-3 px-4 font-semibold",
+    style: {
+      color: "var(--text-main)"
+    }
+  }, "予算"), /*#__PURE__*/React.createElement("th", {
+    className: "text-right py-3 px-4 font-semibold",
+    style: {
+      color: "var(--text-main)"
+    }
+  }, "実績"), /*#__PURE__*/React.createElement("th", {
+    className: "text-right py-3 px-4 font-semibold",
+    style: {
+      color: "var(--text-main)"
+    }
+  }, "差異"), /*#__PURE__*/React.createElement("th", {
+    className: "text-right py-3 px-4 font-semibold",
+    style: {
+      color: "var(--text-main)"
+    }
+  }, "差異率"))), /*#__PURE__*/React.createElement("tbody", null, rows.slice().sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff)).map(r => /*#__PURE__*/React.createElement("tr", {
+    key: r.account,
+    style: {
+      borderBottom: "1px solid #F0EADC"
+    }
+  }, /*#__PURE__*/React.createElement("td", {
+    className: "py-2.5 px-4",
+    style: {
+      color: "var(--text-main)"
+    }
+  }, r.account), /*#__PURE__*/React.createElement("td", {
+    className: "text-right py-2.5 px-4 font-mono",
+    style: {
+      color: "var(--text-sub)"
+    }
+  }, yen(r.budget)), /*#__PURE__*/React.createElement("td", {
+    className: "text-right py-2.5 px-4 font-mono",
+    style: {
+      color: "var(--text-main)"
+    }
+  }, yen(r.actual)), /*#__PURE__*/React.createElement("td", {
+    className: "text-right py-2.5 px-4"
+  }, /*#__PURE__*/React.createElement(VarianceTag, {
+    diff: r.diff
+  })), /*#__PURE__*/React.createElement("td", {
+    className: "text-right py-2.5 px-4 font-mono",
+    style: {
+      color: r.diff > 0 ? "var(--accent)" : r.diff < 0 ? "var(--good)" : "var(--text-sub)"
+    }
+  }, r.budget !== 0 || r.actual !== 0 ? `${r.pct >= 0 ? "+" : ""}${r.pct.toFixed(1)}%` : "－")))), /*#__PURE__*/React.createElement("tfoot", null, /*#__PURE__*/React.createElement("tr", {
+    style: {
+      borderTop: "2px solid var(--ink)"
+    }
+  }, /*#__PURE__*/React.createElement("td", {
+    className: "py-3 px-4 font-semibold",
+    style: {
+      color: "var(--text-main)"
+    }
+  }, "合計"), /*#__PURE__*/React.createElement("td", {
+    className: "text-right py-3 px-4 font-mono font-semibold",
+    style: {
+      color: "var(--text-sub)"
+    }
+  }, yen(totalBudget)), /*#__PURE__*/React.createElement("td", {
+    className: "text-right py-3 px-4 font-mono font-semibold",
+    style: {
+      color: "var(--text-main)"
+    }
+  }, yen(totalActual)), /*#__PURE__*/React.createElement("td", {
+    className: "text-right py-3 px-4"
+  }, /*#__PURE__*/React.createElement(VarianceTag, {
+    diff: totalDiff
+  })), /*#__PURE__*/React.createElement("td", {
+    className: "text-right py-3 px-4 font-mono font-semibold",
+    style: {
+      color: totalDiff > 0 ? "var(--accent)" : totalDiff < 0 ? "var(--good)" : "var(--text-sub)"
+    }
+  }, `${totalPct >= 0 ? "+" : ""}${totalPct.toFixed(1)}%`)))))));
+}
+
+/* ------------------------------------------------------------------ */
+/*  項目別詳細ページ（科目ごとの深掘り）                                */
+/* ------------------------------------------------------------------ */
+
+function ItemDetailPage({
+  monthsData,
+  sortedKeys,
+  accountOrder
+}) {
+  const [selectedAccount, setSelectedAccount] = useState(accountOrder[0] || "");
+  const [detailMonth, setDetailMonth] = useState(sortedKeys[sortedKeys.length - 1] || "");
+  const [openSubs, setOpenSubs] = useState(new Set());
+  useEffect(() => {
+    if (!selectedAccount && accountOrder.length) setSelectedAccount(accountOrder[0]);
+    if (selectedAccount && !accountOrder.includes(selectedAccount) && accountOrder.length) {
+      setSelectedAccount(accountOrder[0]);
+    }
+  }, [accountOrder, selectedAccount]);
+  useEffect(() => {
+    if (!detailMonth && sortedKeys.length) setDetailMonth(sortedKeys[sortedKeys.length - 1]);
+    if (detailMonth && !sortedKeys.includes(detailMonth) && sortedKeys.length) {
+      setDetailMonth(sortedKeys[sortedKeys.length - 1]);
+    }
+  }, [sortedKeys, detailMonth]);
+  if (sortedKeys.length === 0) {
+    return /*#__PURE__*/React.createElement("div", {
+      className: "fade-in rounded-xl p-10",
+      style: {
+        background: "var(--card)",
+        border: "1px solid var(--line)"
+      }
+    }, /*#__PURE__*/React.createElement(EmptyNote, {
+      text: "実績データがまだありません。「資料アップロード」から取り込んでください。"
+    }));
+  }
+  const acc = selectedAccount;
+  const accHasBudget = hasBudget(acc);
+  const trend = sortedKeys.map(k => ({
+    label: shortMonthLabel(monthsData[k].year, monthsData[k].month),
+    実績: monthsData[k].totals[acc] || 0,
+    予算: accHasBudget ? budgetFor(acc, k) || 0 : null
+  }));
+  const subKeys = useMemo(() => {
+    const set = new Set();
+    sortedKeys.forEach(k => {
+      const d = monthsData[k].detail?.[acc];
+      if (d) Object.keys(d).forEach(s => set.add(s));
+    });
+    return Array.from(set);
+  }, [sortedKeys, monthsData, acc]);
+  const total = sortedKeys.reduce((s, k) => s + (monthsData[k].totals[acc] || 0), 0);
+  const budgetTotal = accHasBudget ? sortedKeys.reduce((s, k) => s + (budgetFor(acc, k) || 0), 0) : null;
+  const avg = sortedKeys.length ? total / sortedKeys.length : 0;
+  const maxMonth = sortedKeys.reduce((best, k) => (monthsData[k].totals[acc] || 0) > (best ? monthsData[best].totals[acc] || 0 : -Infinity) ? k : best, null);
+  const handleDownload = () => {
+    const header = ["月", "実績", ...(accHasBudget ? ["予算", "差異"] : []), ...subKeys];
+    const csvRows = [header];
+    sortedKeys.forEach(k => {
+      const actual = monthsData[k].totals[acc] || 0;
+      const row = [monthLabel(monthsData[k].year, monthsData[k].month), actual];
+      if (accHasBudget) {
+        const b = budgetFor(acc, k) || 0;
+        row.push(b, actual - b);
+      }
+      subKeys.forEach(s => row.push(monthsData[k].detail?.[acc]?.[s] ?? 0));
+      csvRows.push(row);
+    });
+    downloadCsv(`項目別詳細_${acc}.csv`, csvRows);
+  };
+  const monthLines = monthsData[detailMonth]?.lines?.[acc] || {};
+  const monthLineSubKeys = Object.keys(monthLines);
+  const monthLineTotal = monthLineSubKeys.reduce((sum, s) => sum + (monthLines[s] || []).reduce((ss, it) => ss + (it.amount || 0), 0), 0);
+  const hasLineData = monthLineSubKeys.some(s => (monthLines[s] || []).length > 0);
+  const toggleSub = sub => {
+    setOpenSubs(prev => {
+      const next = new Set(prev);
+      next.has(sub) ? next.delete(sub) : next.add(sub);
+      return next;
+    });
+  };
+  const handleLinesDownload = () => {
+    const header = ["日付", "細目", "摘要", "金額"];
+    const csvRows = [header];
+    monthLineSubKeys.forEach(s => {
+      (monthLines[s] || []).forEach(it => {
+        csvRows.push([it.date, s, it.desc, it.amount]);
+      });
+    });
+    downloadCsv(`明細_${acc}_${detailMonth}.csv`, csvRows);
+  };
+  return /*#__PURE__*/React.createElement("div", {
+    className: "fade-in space-y-5"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-wrap items-center justify-between gap-3"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-wrap gap-2"
+  }, accountOrder.map(a => /*#__PURE__*/React.createElement("button", {
+    key: a,
+    onClick: () => setSelectedAccount(a),
+    className: "text-sm px-3.5 py-1.5 rounded-full font-body transition-colors",
+    style: {
+      background: a === acc ? "var(--accent)" : "var(--card)",
+      color: a === acc ? "#fff" : "var(--text-sub)",
+      border: `1px solid ${a === acc ? "var(--accent)" : "var(--line)"}`
+    }
+  }, a))), /*#__PURE__*/React.createElement("button", {
+    onClick: handleDownload,
+    className: "flex items-center gap-2 text-sm px-4 py-2 rounded-lg text-white shrink-0",
+    style: {
+      background: "var(--ink)"
+    }
+  }, /*#__PURE__*/React.createElement(Download, {
+    size: 15
+  }), "CSVダウンロード")), /*#__PURE__*/React.createElement("div", {
+    className: "grid grid-cols-1 sm:grid-cols-3 gap-4"
+  }, /*#__PURE__*/React.createElement(StatCard, {
+    label: "累計実績",
+    value: `¥${yen(total)}`,
+    sub: `${sortedKeys.length}ヶ月分`
+  }), /*#__PURE__*/React.createElement(StatCard, {
+    label: "月平均",
+    value: `¥${yen(avg)}`,
+    sub: "実績ベース"
+  }), accHasBudget ? /*#__PURE__*/React.createElement(StatCard, {
+    label: "累計差異（実績−予算）",
+    value: `${total - budgetTotal >= 0 ? "+" : ""}¥${yen(total - budgetTotal)}`,
+    sub: `予算累計 ¥${yen(budgetTotal)}`,
+    trend: total - budgetTotal === 0 ? null : total - budgetTotal > 0 ? "up" : "down"
+  }) : /*#__PURE__*/React.createElement(StatCard, {
+    label: "最大の月",
+    value: maxMonth ? monthLabel(monthsData[maxMonth].year, monthsData[maxMonth].month) : "－",
+    sub: maxMonth ? `¥${yen(monthsData[maxMonth].totals[acc])}` : ""
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "rounded-xl p-5",
+    style: {
+      background: "var(--card)",
+      border: "1px solid var(--line)"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "text-sm font-semibold mb-4",
+    style: {
+      color: "var(--text-main)"
+    }
+  }, acc, "｜月次推移", accHasBudget ? "（予算対比）" : ""), /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: "100%",
+      height: 220
+    }
+  }, /*#__PURE__*/React.createElement(ResponsiveContainer, null, /*#__PURE__*/React.createElement(LineChart, {
+    data: trend,
+    margin: {
+      top: 4,
+      right: 12,
+      left: -12,
+      bottom: 0
+    }
+  }, /*#__PURE__*/React.createElement(CartesianGrid, {
+    vertical: false,
+    stroke: "#EEE7D8"
+  }), /*#__PURE__*/React.createElement(XAxis, {
+    dataKey: "label",
+    tick: {
+      fontSize: 12,
+      fill: "#766E62"
+    },
+    axisLine: {
+      stroke: "#E4DDCB"
+    },
+    tickLine: false
+  }), /*#__PURE__*/React.createElement(YAxis, {
+    tick: {
+      fontSize: 11,
+      fill: "#766E62"
+    },
+    axisLine: false,
+    tickLine: false,
+    tickFormatter: v => `${Math.round(v / 1000)}k`
+  }), /*#__PURE__*/React.createElement(Tooltip, {
+    formatter: v => v === null ? "－" : `¥${yen(v)}`,
+    contentStyle: {
+      borderRadius: 8,
+      border: "1px solid #E4DDCB",
+      fontSize: 12
+    }
+  }), /*#__PURE__*/React.createElement(Legend, {
+    wrapperStyle: {
+      fontSize: 12
+    }
+  }), /*#__PURE__*/React.createElement(Line, {
+    type: "monotone",
+    dataKey: "実績",
+    stroke: "#A9402A",
+    strokeWidth: 2.5,
+    dot: {
+      r: 3
+    }
+  }), accHasBudget && /*#__PURE__*/React.createElement(Line, {
+    type: "monotone",
+    dataKey: "予算",
+    stroke: "#C9BFA8",
+    strokeWidth: 2,
+    strokeDasharray: "5 4",
+    dot: {
+      r: 2.5
+    }
+  }))))), /*#__PURE__*/React.createElement("div", {
+    className: "rounded-xl overflow-hidden",
+    style: {
+      background: "var(--card)",
+      border: "1px solid var(--line)"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "px-5 pt-4 text-sm font-semibold",
+    style: {
+      color: "var(--text-main)"
+    }
+  }, acc, "｜細目別 月次内訳"), /*#__PURE__*/React.createElement("div", {
+    className: "overflow-x-auto ledger-scroll mt-2"
+  }, /*#__PURE__*/React.createElement("table", {
+    className: "w-full text-sm font-body",
+    style: {
+      minWidth: 260 + sortedKeys.length * 100
+    }
+  }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", {
+    style: {
+      background: "#FBF8F1",
+      borderBottom: "1px solid var(--line)"
+    }
+  }, /*#__PURE__*/React.createElement("th", {
+    className: "text-left py-2.5 px-4 font-semibold sticky left-0",
+    style: {
+      background: "#FBF8F1",
+      color: "var(--text-main)"
+    }
+  }, "細目"), sortedKeys.map(k => /*#__PURE__*/React.createElement("th", {
+    key: k,
+    className: "text-right py-2.5 px-4 font-semibold whitespace-nowrap",
+    style: {
+      color: "var(--text-main)"
+    }
+  }, shortMonthLabel(monthsData[k].year, monthsData[k].month))), /*#__PURE__*/React.createElement("th", {
+    className: "text-right py-2.5 px-4 font-semibold",
+    style: {
+      color: "var(--accent)"
+    }
+  }, "合計"))), /*#__PURE__*/React.createElement("tbody", null, subKeys.length === 0 ? /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
+    colSpan: sortedKeys.length + 2,
+    className: "py-6 px-4"
+  }, /*#__PURE__*/React.createElement(EmptyNote, {
+    text: "この科目には細目データがありません"
+  }))) : subKeys.map(s => {
+    const subTotal = sortedKeys.reduce((sum, k) => sum + (monthsData[k].detail?.[acc]?.[s] || 0), 0);
+    return /*#__PURE__*/React.createElement("tr", {
+      key: s,
+      style: {
+        borderBottom: "1px solid #F0EADC"
+      }
+    }, /*#__PURE__*/React.createElement("td", {
+      className: "py-2 px-4 sticky left-0 text-xs",
+      style: {
+        background: "var(--card)",
+        color: "var(--text-main)"
+      }
+    }, s), sortedKeys.map(k => /*#__PURE__*/React.createElement("td", {
+      key: k,
+      className: "text-right py-2 px-4 font-mono text-xs",
+      style: {
+        color: "var(--text-sub)"
+      }
+    }, yen(monthsData[k].detail?.[acc]?.[s]))), /*#__PURE__*/React.createElement("td", {
+      className: "text-right py-2 px-4 font-mono text-xs font-semibold",
+      style: {
+        color: "var(--accent)"
+      }
+    }, yen(subTotal)));
+  }))))), /*#__PURE__*/React.createElement("div", {
+    className: "rounded-xl overflow-hidden",
+    style: {
+      background: "var(--card)",
+      border: "1px solid var(--line)"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "px-5 pt-4 pb-3 flex flex-wrap items-center justify-between gap-3"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "text-sm font-semibold",
+    style: {
+      color: "var(--text-main)"
+    }
+  }, acc, "｜明細（個別取引）"), /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-2"
+  }, /*#__PURE__*/React.createElement("select", {
+    value: detailMonth,
+    onChange: e => setDetailMonth(e.target.value),
+    className: "text-sm px-3 py-1.5 rounded-lg font-body",
+    style: {
+      border: "1px solid var(--line)",
+      background: "var(--card)",
+      color: "var(--text-main)"
+    }
+  }, sortedKeys.map(k => /*#__PURE__*/React.createElement("option", {
+    key: k,
+    value: k
+  }, monthLabel(monthsData[k].year, monthsData[k].month)))), hasLineData && /*#__PURE__*/React.createElement("button", {
+    onClick: handleLinesDownload,
+    className: "flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg text-white",
+    style: {
+      background: "var(--ink)"
+    }
+  }, /*#__PURE__*/React.createElement(Download, {
+    size: 13
+  }), "CSV"))), !hasLineData ? /*#__PURE__*/React.createElement("div", {
+    className: "px-5 pb-5"
+  }, /*#__PURE__*/React.createElement(EmptyNote, {
+    text: "この月のデータには明細情報が含まれていません（明細対応前に取り込まれたデータの可能性があります。該当の資料を再アップロードすると表示されます）。"
+  })) : /*#__PURE__*/React.createElement("div", {
+    className: "px-2 pb-3"
+  }, monthLineSubKeys.map(sub => {
+    const items = monthLines[sub] || [];
+    const subTotal = items.reduce((s, it) => s + (it.amount || 0), 0);
+    const isOpen = openSubs.has(sub);
+    return /*#__PURE__*/React.createElement("div", {
+      key: sub,
+      className: "mt-2 mx-3 rounded-lg overflow-hidden",
+      style: {
+        border: "1px solid #F0EADC"
+      }
+    }, /*#__PURE__*/React.createElement("button", {
+      onClick: () => toggleSub(sub),
+      className: "w-full flex items-center justify-between px-3.5 py-2.5",
+      style: {
+        background: "#FBF8F1"
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "flex items-center gap-1.5 text-xs font-semibold",
+      style: {
+        color: "var(--text-main)"
+      }
+    }, isOpen ? /*#__PURE__*/React.createElement(ChevronDown, {
+      size: 13,
+      color: "#A39A89"
+    }) : /*#__PURE__*/React.createElement(ChevronRight, {
+      size: 13,
+      color: "#A39A89"
+    }), sub, /*#__PURE__*/React.createElement("span", {
+      className: "font-normal",
+      style: {
+        color: "var(--text-sub)"
+      }
+    }, "（", items.length, "件）")), /*#__PURE__*/React.createElement("span", {
+      className: "text-xs font-mono font-semibold",
+      style: {
+        color: "var(--accent)"
+      }
+    }, "¥", yen(subTotal))), isOpen && /*#__PURE__*/React.createElement("table", {
+      className: "w-full text-xs font-body"
+    }, /*#__PURE__*/React.createElement("tbody", null, items.map((it, idx) => /*#__PURE__*/React.createElement("tr", {
+      key: idx,
+      style: {
+        borderTop: "1px solid #F5F0E4"
+      }
+    }, /*#__PURE__*/React.createElement("td", {
+      className: "py-2 px-3.5 font-mono whitespace-nowrap",
+      style: {
+        color: "var(--text-sub)",
+        width: 88
+      }
+    }, it.date), /*#__PURE__*/React.createElement("td", {
+      className: "py-2 px-3.5",
+      style: {
+        color: "var(--text-main)"
+      }
+    }, it.desc), /*#__PURE__*/React.createElement("td", {
+      className: "py-2 px-3.5 text-right font-mono whitespace-nowrap",
+      style: {
+        color: "var(--text-main)"
+      }
+    }, "¥", yen(it.amount)))))));
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "flex justify-end px-3 pt-3 pb-1 text-xs font-mono font-semibold",
+    style: {
+      color: "var(--text-main)"
+    }
+  }, monthLabel(monthsData[detailMonth]?.year, monthsData[detailMonth]?.month), " 合計：¥", yen(monthLineTotal)))));
+}
+
+/* ------------------------------------------------------------------ */
+/*  アップロードページ                                                 */
+/* ------------------------------------------------------------------ */
+
+function UploadPage({
+  monthsData,
+  onImport
+}) {
+  const [pending, setPending] = useState([]);
+  const [dragOver, setDragOver] = useState(false);
+  const fileInputRef = useRef(null);
+  const idRef = useRef(0);
+  const parseFile = async file => {
+    const id = ++idRef.current;
+    const entry = {
+      id,
+      name: file.name,
+      status: "parsing",
+      year: null,
+      month: null,
+      totals: null,
+      detail: null,
+      error: null
+    };
+    setPending(p => [...p, entry]);
+    try {
+      const isCsv = /\.csv$/i.test(file.name);
+      const rows = isCsv ? await readCsvRows(file) : await readXlsxRows(file);
+      const {
+        totals,
+        detail,
+        lines
+      } = aggregateRows(rows);
+      const ym = parseFilenameYearMonth(file.name);
+      if (Object.keys(totals).length === 0) {
+        throw new Error("集計対象のデータが見つかりませんでした");
+      }
+      setPending(p => p.map(e => e.id === id ? {
+        ...e,
+        status: ym ? "ready" : "needs-date",
+        year: ym?.year ?? new Date().getFullYear(),
+        month: ym?.month ?? 1,
+        totals,
+        detail,
+        lines,
+        total: Object.values(totals).reduce((a, b) => a + b, 0)
+      } : e));
+    } catch (err) {
+      setPending(p => p.map(e => e.id === id ? {
+        ...e,
+        status: "error",
+        error: String(err.message || err)
+      } : e));
+    }
+  };
+  const handleFiles = files => {
+    Array.from(files).filter(f => /\.(xlsx|xls|csv)$/i.test(f.name)).forEach(parseFile);
+  };
+  const updateDate = (id, field, value) => {
+    setPending(p => p.map(e => e.id === id ? {
+      ...e,
+      [field]: parseInt(value, 10) || 1
+    } : e));
+  };
+  const confirmImport = async entry => {
+    const key = keyOf(entry.year, entry.month);
+    if (monthsData[key]) {
+      const ok = window.confirm(`${monthLabel(entry.year, entry.month)}のデータは既に取り込まれています。上書きしますか？`);
+      if (!ok) return;
+    }
+    setPending(p => p.map(e => e.id === entry.id ? {
+      ...e,
+      status: "saving"
+    } : e));
+    await onImport(entry);
+    setPending(p => p.map(e => e.id === entry.id ? {
+      ...e,
+      status: "imported"
+    } : e));
+  };
+  const removePending = id => setPending(p => p.filter(e => e.id !== id));
+  const status = window.storage.getStatus ? window.storage.getStatus() : "unconfigured";
+  return /*#__PURE__*/React.createElement("div", {
+    className: "fade-in space-y-5"
+  }, status === "unconfigured" && /*#__PURE__*/React.createElement("div", {
+    className: "text-xs px-4 py-3 rounded-lg",
+    style: {
+      background: "#FBF8F1",
+      color: "var(--text-sub)",
+      border: "1px solid var(--line)"
+    }
+  }, "現在はこの端末のブラウザにのみ保存されています。他のメンバーや別の端末とデータを共有するには、Google Apps Scriptの共有スプレッドシートと連携する設定が必要です（gas-code.gs を参照）。"), status === "local-only" && /*#__PURE__*/React.createElement("div", {
+    className: "text-xs px-4 py-3 rounded-lg flex items-center gap-2",
+    style: {
+      background: "#FDF1EC",
+      color: "var(--accent)",
+      border: "1px solid var(--accent-soft)"
+    }
+  }, /*#__PURE__*/React.createElement(AlertTriangle, {
+    size: 14
+  }), "共有スプレッドシートに接続できません。ネットワーク状況やデプロイ設定をご確認ください（今のところこの端末にのみ保存されています）。"), /*#__PURE__*/React.createElement("div", {
+    onDragOver: e => {
+      e.preventDefault();
+      setDragOver(true);
+    },
+    onDragLeave: () => setDragOver(false),
+    onDrop: e => {
+      e.preventDefault();
+      setDragOver(false);
+      handleFiles(e.dataTransfer.files);
+    },
+    onClick: () => fileInputRef.current?.click(),
+    className: "rounded-xl p-10 text-center cursor-pointer transition-colors",
+    style: {
+      background: dragOver ? "var(--accent-soft)" : "var(--card)",
+      border: `2px dashed ${dragOver ? "var(--accent)" : "var(--line)"}`
+    }
+  }, /*#__PURE__*/React.createElement(UploadCloud, {
+    size: 30,
+    style: {
+      color: "var(--accent)",
+      margin: "0 auto 10px"
+    }
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "text-sm font-semibold",
+    style: {
+      color: "var(--text-main)"
+    }
+  }, "ここにファイルをドロップ、またはクリックして選択"), /*#__PURE__*/React.createElement("div", {
+    className: "text-xs mt-1.5",
+    style: {
+      color: "var(--text-sub)"
+    }
+  }, "「営業推進本部_販管費」の月次資料（.xlsx / .csv）に対応・複数選択可"), /*#__PURE__*/React.createElement("input", {
+    ref: fileInputRef,
+    type: "file",
+    multiple: true,
+    accept: ".xlsx,.xls,.csv",
+    className: "hidden",
+    onChange: e => {
+      handleFiles(e.target.files);
+      e.target.value = "";
+    }
+  })), pending.length > 0 && /*#__PURE__*/React.createElement("div", {
+    className: "space-y-3"
+  }, pending.map(e => /*#__PURE__*/React.createElement("div", {
+    key: e.id,
+    className: "rounded-xl p-4 flex flex-col sm:flex-row sm:items-center gap-3",
+    style: {
+      background: "var(--card)",
+      border: "1px solid var(--line)"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-3 flex-1 min-w-0"
+  }, /\.csv$/i.test(e.name) ? /*#__PURE__*/React.createElement(FileText, {
+    size: 20,
+    style: {
+      color: "var(--text-sub)"
+    }
+  }) : /*#__PURE__*/React.createElement(FileSpreadsheet, {
+    size: 20,
+    style: {
+      color: "var(--text-sub)"
+    }
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "min-w-0"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "text-sm truncate font-body",
+    style: {
+      color: "var(--text-main)"
+    }
+  }, e.name), e.status === "parsing" && /*#__PURE__*/React.createElement("div", {
+    className: "text-xs flex items-center gap-1.5 mt-0.5",
+    style: {
+      color: "var(--text-sub)"
+    }
+  }, /*#__PURE__*/React.createElement(Loader2, {
+    size: 12,
+    className: "animate-spin"
+  }), " 解析中…"), e.status === "error" && /*#__PURE__*/React.createElement("div", {
+    className: "text-xs flex items-center gap-1.5 mt-0.5",
+    style: {
+      color: "var(--accent)"
+    }
+  }, /*#__PURE__*/React.createElement(AlertTriangle, {
+    size: 12
+  }), " ", e.error), (e.status === "ready" || e.status === "needs-date" || e.status === "saving" || e.status === "imported") && /*#__PURE__*/React.createElement("div", {
+    className: "text-xs mt-0.5 font-mono",
+    style: {
+      color: "var(--text-sub)"
+    }
+  }, "科目 ", Object.keys(e.totals).length, "件 ・ 合計 ¥", yen(e.total)))), (e.status === "ready" || e.status === "needs-date") && /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-2 shrink-0"
+  }, e.status === "needs-date" && /*#__PURE__*/React.createElement("span", {
+    className: "text-xs",
+    style: {
+      color: "var(--text-sub)"
+    }
+  }, "対象月:"), /*#__PURE__*/React.createElement("input", {
+    type: "number",
+    value: e.year,
+    onChange: ev => updateDate(e.id, "year", ev.target.value),
+    className: "w-20 text-sm font-mono px-2 py-1.5 rounded-md",
+    style: {
+      border: "1px solid var(--line)"
+    }
+  }), "年", /*#__PURE__*/React.createElement("input", {
+    type: "number",
+    min: 1,
+    max: 12,
+    value: e.month,
+    onChange: ev => updateDate(e.id, "month", ev.target.value),
+    className: "w-14 text-sm font-mono px-2 py-1.5 rounded-md",
+    style: {
+      border: "1px solid var(--line)"
+    }
+  }), "月", /*#__PURE__*/React.createElement("button", {
+    onClick: () => confirmImport(e),
+    className: "text-sm px-4 py-1.5 rounded-md text-white ml-1",
+    style: {
+      background: "var(--accent)"
+    }
+  }, "取り込む"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => removePending(e.id),
+    className: "p-1.5"
+  }, /*#__PURE__*/React.createElement(X, {
+    size: 15,
+    style: {
+      color: "var(--text-sub)"
+    }
+  }))), e.status === "saving" && /*#__PURE__*/React.createElement("div", {
+    className: "text-xs flex items-center gap-1.5",
+    style: {
+      color: "var(--text-sub)"
+    }
+  }, /*#__PURE__*/React.createElement(Loader2, {
+    size: 13,
+    className: "animate-spin"
+  }), " 保存中…"), e.status === "imported" && /*#__PURE__*/React.createElement("div", {
+    className: "text-xs flex items-center gap-1.5 font-semibold",
+    style: {
+      color: "var(--good)"
+    }
+  }, /*#__PURE__*/React.createElement(CheckCircle2, {
+    size: 14
+  }), " ", monthLabel(e.year, e.month), " を取込済み"), e.status === "error" && /*#__PURE__*/React.createElement("button", {
+    onClick: () => removePending(e.id),
+    className: "p-1.5 shrink-0"
+  }, /*#__PURE__*/React.createElement(X, {
+    size: 15,
+    style: {
+      color: "var(--text-sub)"
+    }
+  }))))), /*#__PURE__*/React.createElement(ImportedList, {
+    monthsData: monthsData
+  }));
+}
+function ImportedList({
+  monthsData
+}) {
+  const keys = Object.keys(monthsData).sort();
+  if (keys.length === 0) return null;
+  return /*#__PURE__*/React.createElement("div", {
+    className: "rounded-xl p-5",
+    style: {
+      background: "var(--card)",
+      border: "1px solid var(--line)"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "text-sm font-semibold mb-3",
+    style: {
+      color: "var(--text-main)"
+    }
+  }, "取込済みの月"), /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-wrap gap-2"
+  }, keys.map(k => /*#__PURE__*/React.createElement("span", {
+    key: k,
+    className: "text-xs px-3 py-1.5 rounded-full font-mono",
+    style: {
+      background: "#FBF8F1",
+      color: "var(--text-sub)",
+      border: "1px solid var(--line)"
+    }
+  }, monthLabel(monthsData[k].year, monthsData[k].month)))));
+}
+
+/* ------------------------------------------------------------------ */
+/*  ルート                                                             */
+/* ------------------------------------------------------------------ */
+
+function App() {
+  const [page, setPage] = useState("dashboard");
+  const [monthsData, setMonthsData] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [syncStatus, setSyncStatus] = useState("checking");
+  useEffect(() => {
+    (async () => {
+      try {
+        const listRes = await window.storage.list(STORAGE_PREFIX, false);
+        setSyncStatus(window.storage.getStatus ? window.storage.getStatus() : "unconfigured");
+        if (listRes && listRes.keys && listRes.keys.length > 0) {
+          const loaded = {};
+          for (const k of listRes.keys) {
+            try {
+              const r = await window.storage.get(k, false);
+              if (r && r.value) {
+                const parsed = JSON.parse(r.value);
+                loaded[keyOf(parsed.year, parsed.month)] = parsed;
+              }
+            } catch {
+              /* skip unreadable entry */
+            }
+          }
+          setMonthsData(loaded);
+        } else {
+          setMonthsData(SEED_DATA);
+          for (const key of Object.keys(SEED_DATA)) {
+            try {
+              await window.storage.set(STORAGE_PREFIX + key, JSON.stringify(SEED_DATA[key]), false);
+            } catch {
+              /* storage unavailable, keep in-memory seed */
+            }
+          }
+          setSyncStatus(window.storage.getStatus ? window.storage.getStatus() : "unconfigured");
+        }
+      } catch {
+        setMonthsData(SEED_DATA);
+        setSyncStatus("local-only");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+  const handleImport = useCallback(async entry => {
+    const payload = {
+      year: entry.year,
+      month: entry.month,
+      sourceFile: entry.name,
+      totals: entry.totals,
+      detail: entry.detail,
+      lines: entry.lines
+    };
+    const key = keyOf(entry.year, entry.month);
+    try {
+      await window.storage.set(STORAGE_PREFIX + key, JSON.stringify(payload), false);
+      setSyncStatus(window.storage.getStatus ? window.storage.getStatus() : "unconfigured");
+    } catch {
+      setSyncStatus(window.storage.getStatus ? window.storage.getStatus() : "local-only");
+      /* fall through to local state even if persistence fails */
+    }
+    setMonthsData(prev => ({
+      ...prev,
+      [key]: payload
+    }));
+  }, []);
+  const sortedKeys = useMemo(() => Object.keys(monthsData).sort(), [monthsData]);
+  const accountOrder = useMemo(() => {
+    const codeMap = {
+      ...KNOWN_ACCOUNT_CODES
+    };
+    const names = new Set();
+    sortedKeys.forEach(k => Object.keys(monthsData[k].totals).forEach(n => names.add(n)));
+    return Array.from(names).sort((a, b) => {
+      const ca = codeMap[a] || "999" + a;
+      const cb = codeMap[b] || "999" + b;
+      return String(ca).localeCompare(String(cb), "ja");
+    });
+  }, [monthsData, sortedKeys]);
+  const latestKey = sortedKeys[sortedKeys.length - 1];
+  return /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-col md:flex-row min-h-full w-full font-body",
+    style: {
+      background: "var(--paper)"
+    }
+  }, /*#__PURE__*/React.createElement(GlobalStyle, null), /*#__PURE__*/React.createElement(Sidebar, {
+    page: page,
+    setPage: setPage,
+    monthCount: sortedKeys.length,
+    latestLabel: latestKey ? monthLabel(monthsData[latestKey].year, monthsData[latestKey].month) : "",
+    syncStatus: syncStatus
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "flex-1 min-w-0 p-5 md:p-8"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "mb-6"
+  }, /*#__PURE__*/React.createElement("h1", {
+    className: "font-display text-xl md:text-2xl",
+    style: {
+      color: "var(--text-main)"
+    }
+  }, page === "dashboard" && "ダッシュボード", page === "budget" && "予算・実績比較", page === "pivot" && "科目別・月次一覧", page === "detail" && "項目別詳細", page === "upload" && "資料アップロード"), /*#__PURE__*/React.createElement("p", {
+    className: "text-xs mt-1",
+    style: {
+      color: "var(--text-sub)"
+    }
+  }, "営業推進本部 販管費 ／ 千房ホールディングス株式会社")), loading ? /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-2 text-sm py-16 justify-center",
+    style: {
+      color: "var(--text-sub)"
+    }
+  }, /*#__PURE__*/React.createElement(Loader2, {
+    size: 16,
+    className: "animate-spin"
+  }), " 読み込み中…") : /*#__PURE__*/React.createElement(React.Fragment, null, page === "dashboard" && /*#__PURE__*/React.createElement(Dashboard, {
+    monthsData: monthsData,
+    sortedKeys: sortedKeys,
+    accountOrder: accountOrder
+  }), page === "budget" && /*#__PURE__*/React.createElement(BudgetComparisonPage, {
+    monthsData: monthsData,
+    sortedKeys: sortedKeys,
+    accountOrder: accountOrder
+  }), page === "pivot" && /*#__PURE__*/React.createElement(PivotPage, {
+    monthsData: monthsData,
+    sortedKeys: sortedKeys,
+    accountOrder: accountOrder
+  }), page === "detail" && /*#__PURE__*/React.createElement(ItemDetailPage, {
+    monthsData: monthsData,
+    sortedKeys: sortedKeys,
+    accountOrder: accountOrder
+  }), page === "upload" && /*#__PURE__*/React.createElement(UploadPage, {
+    monthsData: monthsData,
+    onImport: handleImport
+  }))));
+}
+
+/* ------------------------------------------------------------------ */
+/*  マウント                                                           */
+/* ------------------------------------------------------------------ */
+
+const rootEl = document.getElementById("root");
+const root = ReactDOM.createRoot(rootEl);
+root.render(/*#__PURE__*/React.createElement(App, null));
+</script>
+</body>
+</html>
