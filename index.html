@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>販管費管理｜営業推進本部</title>
-<meta name="description" content="千房ホールディングス株式会社 営業推進本部 販管費管理アプリ" />
+<title>販管費管理｜千房グループ</title>
+<meta name="description" content="千房ホールディングス株式会社／千房株式会社 販管費管理アプリ" />
 
 <!-- Tailwind CSS (Play CDN) -->
 <script src="https://cdn.tailwindcss.com"></script>
@@ -254,10 +254,33 @@ const Minus = makeIcon(/*#__PURE__*/React.createElement("path", {
  */
 const GAS_ENDPOINT = "https://script.google.com/macros/s/AKfycbzsJAU1lqNkaTFf9NM4uNeTnq5mwrsZBEh8-eitr8RT8RQExJ3Ys8mBxW_qAUhZPT8X/exec"; // 営業推進本部 販管費管理DB（デプロイ済み）
 
-const REMOTE_KEY_PREFIX = "chibo-sgcost:"; // App本体の STORAGE_PREFIX と同じ値
-
+// App本体の STORAGE_PREFIX_HD / STORAGE_PREFIX_COMPANY と同じ値
+const LOCAL_PREFIX_HD = "chibo-sgcost:";
+const LOCAL_PREFIX_COMPANY = "chibo-sgcost-company:";
+// スプレッドシート側のキー接頭辞。千房HD(株)は既存データとの後方互換のため無接頭辞、
+// 千房(株)は新規のため "company:" を付けて区別する
+const REMOTE_PREFIX_COMPANY = "company:";
 function isGasConfigured() {
   return typeof GAS_ENDPOINT === "string" && GAS_ENDPOINT.trim().length > 0;
+}
+
+// ローカルキー（"chibo-sgcost:2026-04" 等）→ スプレッドシート側のキーへ変換
+function toRemoteKey(localKey) {
+  if (localKey.startsWith(LOCAL_PREFIX_COMPANY)) {
+    return REMOTE_PREFIX_COMPANY + localKey.slice(LOCAL_PREFIX_COMPANY.length);
+  }
+  if (localKey.startsWith(LOCAL_PREFIX_HD)) {
+    return localKey.slice(LOCAL_PREFIX_HD.length);
+  }
+  return localKey;
+}
+
+// スプレッドシート側のキー → ローカルキーへ変換（同期時に使用）
+function fromRemoteKey(remoteKey) {
+  if (remoteKey.startsWith(REMOTE_PREFIX_COMPANY)) {
+    return LOCAL_PREFIX_COMPANY + remoteKey.slice(REMOTE_PREFIX_COMPANY.length);
+  }
+  return LOCAL_PREFIX_HD + remoteKey;
 }
 async function gasListAllMonths() {
   const res = await fetch(`${GAS_ENDPOINT}?action=getAll`, {
@@ -268,7 +291,7 @@ async function gasListAllMonths() {
   if (data.error) throw new Error(data.error);
   return data.months || {};
 }
-async function gasSaveMonth(yearMonthKey, payload) {
+async function gasSaveMonth(remoteKey, payload) {
   const res = await fetch(GAS_ENDPOINT, {
     method: "POST",
     headers: {
@@ -276,7 +299,7 @@ async function gasSaveMonth(yearMonthKey, payload) {
     },
     body: JSON.stringify({
       action: "save",
-      key: yearMonthKey,
+      key: remoteKey,
       ...payload
     })
   });
@@ -292,14 +315,40 @@ async function gasSaveMonth(yearMonthKey, payload) {
 /*    localStorageは表示高速化のためのローカルキャッシュとして使用       */
 /*  ・GAS_ENDPOINT未設定時：localStorageのみで動作（この端末専用）       */
 /*  App本体（get/set/list）のインターフェースは変更していない            */
+/*  ・千房HD(株)と千房(株)の2エンティティを同じスプレッドシートで扱う。   */
+/*    千房HD(株)は既存データとの互換のため無接頭辞キー、千房(株)は       */
+/*    "company:" 接頭辞キーとして保存する（App側からは意識不要）         */
 /* ------------------------------------------------------------------ */
 
 (function installStorageShim() {
   const LS_PREFIX = "chibo-sgcost-storage:";
   let remoteAvailable = null; // null=未確認, true=接続成功, false=接続失敗
+  let syncPromise = null; // 同一セッション内でのGAS一括取得を1回に抑える
 
   function fullKey(key, shared) {
     return LS_PREFIX + (shared ? "shared:" : "local:") + key;
+  }
+  async function syncFromRemoteOnce() {
+    if (!isGasConfigured()) {
+      remoteAvailable = false;
+      return;
+    }
+    if (!syncPromise) {
+      syncPromise = (async () => {
+        try {
+          const months = await gasListAllMonths();
+          Object.keys(months).forEach(remoteKey => {
+            const localKey = fromRemoteKey(remoteKey);
+            window.localStorage.setItem(fullKey(localKey, false), JSON.stringify(months[remoteKey]));
+          });
+          remoteAvailable = true;
+        } catch (err) {
+          remoteAvailable = false;
+          console.warn("共有スプレッドシートへの接続に失敗しました。ローカルデータを表示します。", err);
+        }
+      })();
+    }
+    await syncPromise;
   }
   window.storage = {
     getStatus() {
@@ -321,9 +370,9 @@ async function gasSaveMonth(yearMonthKey, payload) {
       // 常にローカルキャッシュへ即時保存（オフライン時でも表示は即時反映される）
       window.localStorage.setItem(fullKey(key, shared), value);
       if (isGasConfigured() && !shared) {
-        const yearMonthKey = key.startsWith(REMOTE_KEY_PREFIX) ? key.slice(REMOTE_KEY_PREFIX.length) : key;
+        const remoteKey = toRemoteKey(key);
         const payload = JSON.parse(value);
-        await gasSaveMonth(yearMonthKey, payload); // 失敗時はここで例外を投げる
+        await gasSaveMonth(remoteKey, payload); // 失敗時はここで例外を投げる
         remoteAvailable = true;
       }
       return {
@@ -342,20 +391,9 @@ async function gasSaveMonth(yearMonthKey, payload) {
       };
     },
     async list(prefix = "", shared = false) {
-      // 起動時：GAS設定があればスプレッドシートの内容でローカルキャッシュを更新
-      if (isGasConfigured() && !shared) {
-        try {
-          const months = await gasListAllMonths();
-          Object.keys(months).forEach(ym => {
-            window.localStorage.setItem(fullKey(REMOTE_KEY_PREFIX + ym, false), JSON.stringify(months[ym]));
-          });
-          remoteAvailable = true;
-        } catch (err) {
-          remoteAvailable = false;
-          console.warn("共有スプレッドシートへの接続に失敗しました。ローカルデータを表示します。", err);
-        }
-      } else if (!isGasConfigured()) {
-        remoteAvailable = false;
+      // 起動時：GAS設定があればスプレッドシートの内容でローカルキャッシュを更新（1セッション1回のみ）
+      if (!shared) {
+        await syncFromRemoteOnce();
       }
       const searchPrefix = LS_PREFIX + (shared ? "shared:" : "local:") + prefix;
       const stripLen = (LS_PREFIX + (shared ? "shared:" : "local:")).length;
@@ -379,7 +417,8 @@ async function gasSaveMonth(yearMonthKey, payload) {
 /*  定数 / ユーティリティ                                              */
 /* ------------------------------------------------------------------ */
 
-const STORAGE_PREFIX = "chibo-sgcost:";
+const STORAGE_PREFIX_HD = "chibo-sgcost:";
+const STORAGE_PREFIX_COMPANY = "chibo-sgcost-company:";
 const pad2 = n => String(n).padStart(2, "0");
 const keyOf = (y, m) => `${y}-${pad2(m)}`;
 const monthLabel = (y, m) => `${y}年${m}月`;
@@ -387,7 +426,7 @@ const shortMonthLabel = (y, m) => `${String(y).slice(2)}/${m}`;
 const yen = n => n === undefined || n === null ? "－" : Math.round(n).toLocaleString("ja-JP");
 
 // 既知の科目コード（並び順の基準。未知の科目は末尾にアルファベット順で追加）
-const KNOWN_ACCOUNT_CODES = {
+const KNOWN_ACCOUNT_CODES_HD = {
   寮費: "723",
   支払手数料: "726",
   旅費交通費: "728",
@@ -395,8 +434,34 @@ const KNOWN_ACCOUNT_CODES = {
   交際費: "730",
   消耗品費: "731",
   研究費: "735",
+  試作費用: "7355",
+  // 千房(株)「営業本部共通」から連携（研究費の直後に並べる）
   諸会費: "737",
   採用教育費: "739"
+};
+
+// 千房(株)（全社・全店舗）の科目コード
+const KNOWN_ACCOUNT_CODES_COMPANY = {
+  賃借料: "721",
+  リース料: "7215",
+  寮費: "723",
+  水道光熱費: "724",
+  広告宣伝費: "725",
+  支払手数料: "726",
+  支払運賃: "727",
+  旅費交通費: "728",
+  通信費: "729",
+  交際費: "730",
+  消耗品費: "731",
+  修繕費: "732",
+  保険料: "733",
+  租税公課: "734",
+  研究費: "735",
+  事務用消耗品費: "736",
+  諸会費: "737",
+  雑費: "738",
+  採用教育費: "739",
+  派遣費用: "740"
 };
 function parseLedgerDate(raw) {
   if (raw === null || raw === undefined || raw === "") return {
@@ -517,6 +582,92 @@ function aggregateRows(rows) {
     codes
   };
 }
+
+/**
+ * 千房(株)（全社・複数部門）の元帳集計。
+ * ヘッダー行が「部門コード 部門名  科目コード 科目名  細目コード 細目名」の
+ * 3階層になっている点はaggregateRowsと同じだが、部門をまたいで同じ科目名・
+ * 細目名を合算する（全社の科目別合計を作る）。あわせて、営業推進本部側の
+ * 「試作費用」に連携する特定行（0350 営業本部共通／735 研究費／3 開発費）
+ * の金額だけを別途抽出して返す。
+ */
+const PROTOTYPE_DEPT = "営業本部共通";
+const PROTOTYPE_ACCOUNT = "研究費";
+const PROTOTYPE_SUB = "開発費";
+function aggregateCompanyRows(rows) {
+  const totals = {};
+  const detail = {};
+  const lines = {};
+  let curDept = null;
+  let curAccount = null;
+  let curSub = null;
+  let prototypeCost = 0;
+  const toNum = v => {
+    if (typeof v === "number") return v;
+    const n = parseFloat(String(v ?? "0").replace(/,/g, ""));
+    return isNaN(n) ? 0 : n;
+  };
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i] || [];
+    const col0 = row[0];
+    const isHeader = col0 !== null && col0 !== undefined && String(col0).trim() !== "";
+    if (isHeader) {
+      const parts = String(col0).trim().split(/\s{2,}/);
+      if (parts.length >= 1) {
+        const m0 = parts[0].match(/^(\S+)\s+(.+)$/);
+        curDept = m0 ? m0[2].trim() : parts[0].trim();
+      }
+      if (parts.length >= 2) {
+        const m = parts[1].match(/^(\S+)\s+(.+)$/);
+        curAccount = m ? m[2].trim() : parts[1].trim();
+      }
+      if (parts.length >= 3) {
+        const m2 = parts[2].match(/^(\S+)\s+(.+)$/);
+        curSub = m2 ? m2[2].trim() : parts[2].trim();
+      } else {
+        curSub = "その他";
+      }
+      lines[curAccount] = lines[curAccount] || {};
+      lines[curAccount][curSub] = lines[curAccount][curSub] || [];
+    } else {
+      const summary = row[6];
+      if (summary === "※※月計※※" && curAccount) {
+        const val = toNum(row[9]) - toNum(row[10]);
+        totals[curAccount] = (totals[curAccount] || 0) + val;
+        detail[curAccount] = detail[curAccount] || {};
+        const subKey = curSub || "その他";
+        detail[curAccount][subKey] = (detail[curAccount][subKey] || 0) + val;
+        if (curDept === PROTOTYPE_DEPT && curAccount === PROTOTYPE_ACCOUNT && curSub === PROTOTYPE_SUB) {
+          prototypeCost += val;
+        }
+      } else if (summary && summary !== "前月より繰越" && curAccount) {
+        const debit = toNum(row[9]);
+        const credit = toNum(row[10]);
+        const {
+          display,
+          iso
+        } = parseLedgerDate(row[3]);
+        const subKey = curSub || "その他";
+        lines[curAccount] = lines[curAccount] || {};
+        lines[curAccount][subKey] = lines[curAccount][subKey] || [];
+        lines[curAccount][subKey].push({
+          date: display,
+          dateIso: iso,
+          desc: String(summary),
+          debit,
+          credit,
+          amount: debit - credit
+        });
+      }
+    }
+  }
+  return {
+    totals,
+    detail,
+    lines,
+    prototypeCost
+  };
+}
 function parseFilenameYearMonth(name) {
   const m = name.match(/(20\d{2})\D{1,3}(\d{1,2})\D/);
   if (m) {
@@ -577,7 +728,7 @@ function downloadCsv(filename, rows) {
 /*  シードデータ（アップロード済み4ヶ月分：2026年4〜7月）              */
 /* ------------------------------------------------------------------ */
 
-const SEED_DATA = {
+const SEED_DATA_HD = {
   "2026-04": {
     "year": 2026,
     "month": 4,
@@ -586,7 +737,8 @@ const SEED_DATA = {
       "寮費": 77000,
       "支払手数料": 5162,
       "旅費交通費": 108757,
-      "通信費": 36134
+      "通信費": 36134,
+      "試作費用": 3684
     },
     "detail": {
       "寮費": {
@@ -604,6 +756,9 @@ const SEED_DATA = {
         "電話": 9733,
         "郵便切手": 3910,
         "ＩＴ関連": 22491
+      },
+      "試作費用": {
+        "試作費用": 3684
       }
     },
     "lines": {
@@ -811,7 +966,8 @@ const SEED_DATA = {
       "旅費交通費": 246648,
       "通信費": 27920,
       "交際費": 982,
-      "採用教育費": 1819
+      "採用教育費": 1819,
+      "試作費用": 2136
     },
     "detail": {
       "寮費": {
@@ -834,6 +990,9 @@ const SEED_DATA = {
       },
       "採用教育費": {
         "教育研修費": 1819
+      },
+      "試作費用": {
+        "試作費用": 2136
       }
     },
     "lines": {
@@ -1312,7 +1471,8 @@ const SEED_DATA = {
       "消耗品費": 102000,
       "研究費": 2419,
       "諸会費": 8182,
-      "採用教育費": 3638
+      "採用教育費": 3638,
+      "試作費用": 11027
     },
     "detail": {
       "寮費": {
@@ -1340,6 +1500,9 @@ const SEED_DATA = {
       },
       "採用教育費": {
         "教育研修費": 3638
+      },
+      "試作費用": {
+        "試作費用": 11027
       }
     },
     "lines": {
@@ -1678,7 +1841,8 @@ const SEED_DATA = {
       "通信費": 29859,
       "交際費": 3060,
       "消耗品費": 1891,
-      "採用教育費": 2729
+      "採用教育費": 2729,
+      "試作費用": 36675
     },
     "detail": {
       "寮費": {
@@ -1705,6 +1869,9 @@ const SEED_DATA = {
       },
       "採用教育費": {
         "教育研修費": 2729
+      },
+      "試作費用": {
+        "試作費用": 36675
       }
     },
     "lines": {
@@ -2154,6 +2321,580 @@ const SEED_DATA = {
         }]
       }
     }
+  },
+  "2026-08": {
+    "year": 2026,
+    "month": 8,
+    "sourceFile": "千房(株)販管費（営業本部共通）より自動連携",
+    "totals": {
+      "試作費用": 12828
+    },
+    "detail": {
+      "試作費用": {
+        "試作費用": 12828
+      }
+    }
+  }
+};
+const SEED_DATA_COMPANY = {
+  "2026-04": {
+    "year": 2026,
+    "month": 4,
+    "sourceFile": "2026_4_販管費.xlsx",
+    "totals": {
+      "賃借料": 40293215,
+      "寮費": 2838577,
+      "水道光熱費": 8750852,
+      "広告宣伝費": 2745656,
+      "支払手数料": 16507320,
+      "旅費交通費": 3816573,
+      "通信費": 913677,
+      "消耗品費": 4909026,
+      "修繕費": 1885934,
+      "保険料": 643150,
+      "租税公課": 227880,
+      "研究費": 8671,
+      "諸会費": 236400,
+      "雑費": 5410029,
+      "採用教育費": 4230564,
+      "交際費": 8960,
+      "派遣費用": 505596
+    },
+    "detail": {
+      "賃借料": {
+        "家賃": 34566006,
+        "共益費": 3782859,
+        "レンタル料": 1944350
+      },
+      "寮費": {
+        "寮費・課税": 122141,
+        "寮費・非課税": 2393768,
+        "寮･共益費": 322668
+      },
+      "水道光熱費": {
+        "電気": 5639336,
+        "ガス": 797646,
+        "水道": 1361210,
+        "その他": 952660
+      },
+      "広告宣伝費": {
+        "会社案内": 12000,
+        "販促・ＤＭ": 715587,
+        "ディスプレイ": 197148,
+        "広告協賛": 1820921
+      },
+      "支払手数料": {
+        "販売手数料・課税": 6270066,
+        "販売手数料・非課税": 3502266,
+        "ＩＴ関連費用": 444950,
+        "その他手数料・課税": 422669,
+        "事務手数料・課税": 5863569,
+        "その他手数料・非課税": 3800
+      },
+      "旅費交通費": {
+        "旅費交通費": 525014,
+        "通勤手当": 3291559,
+        "乗用車経費": 0
+      },
+      "通信費": {
+        "電話": 666861,
+        "ＢＧＭ": 55151,
+        "ＩＴ関連": 160732,
+        "郵便切手": 27634,
+        "その他": 3000,
+        "通信費・不課税": 299
+      },
+      "消耗品費": {
+        "その他": 4909026
+      },
+      "修繕費": {
+        "保守料": 1448656,
+        "修繕費": 437278
+      },
+      "保険料": {
+        "損害保険料": 643150
+      },
+      "租税公課": {
+        "租税公課": 227880
+      },
+      "研究費": {
+        "図書費": 3400,
+        "開発費": 5271
+      },
+      "諸会費": {
+        "諸会費・不課税": 196400,
+        "諸会費・課税": 40000
+      },
+      "雑費": {
+        "おしぼり": 810728,
+        "植木・マット": 2153570,
+        "清掃費": 1543493,
+        "その他": 18623,
+        "衛生管理費": 781192,
+        "クリーニング": 75150,
+        "会議費": 27273
+      },
+      "採用教育費": {
+        "採用報酬": 3269400,
+        "教育研修費": 6364,
+        "採用広告費": 954800
+      },
+      "交際費": {
+        "交際費・不課税": 5000,
+        "交際費・課税": 3960
+      },
+      "派遣費用": {
+        "派遣費用": 505596
+      }
+    }
+  },
+  "2026-05": {
+    "year": 2026,
+    "month": 5,
+    "sourceFile": "2026_5_販管費.xlsx",
+    "totals": {
+      "賃借料": 41958466,
+      "寮費": 2695834,
+      "水道光熱費": 9330454,
+      "広告宣伝費": 2799799,
+      "支払手数料": 16807430,
+      "旅費交通費": 4080021,
+      "通信費": 697932,
+      "消耗品費": 4654660,
+      "修繕費": 2648259,
+      "保険料": 322375,
+      "租税公課": 195281,
+      "研究費": 15536,
+      "雑費": 5265219,
+      "採用教育費": 5367169,
+      "諸会費": 126000,
+      "交際費": 23019,
+      "派遣費用": 515543
+    },
+    "detail": {
+      "賃借料": {
+        "家賃": 36242147,
+        "共益費": 3774909,
+        "レンタル料": 1941410
+      },
+      "寮費": {
+        "寮費・非課税": 2378000,
+        "寮･共益費": 300500,
+        "寮費・課税": 17334
+      },
+      "水道光熱費": {
+        "電気": 6262064,
+        "ガス": 680601,
+        "水道": 1400173,
+        "その他": 987616
+      },
+      "広告宣伝費": {
+        "販促・ＤＭ": 822071,
+        "広告協賛": 1929450,
+        "会社案内": 10000,
+        "その他": 200,
+        "ディスプレイ": 38078
+      },
+      "支払手数料": {
+        "販売手数料・課税": 6695229,
+        "販売手数料・非課税": 3326999,
+        "ＩＴ関連費用": 444950,
+        "その他手数料・課税": 454040,
+        "事務手数料・課税": 5872712,
+        "その他手数料・非課税": 13500
+      },
+      "旅費交通費": {
+        "旅費交通費": 490334,
+        "通勤手当": 3538877,
+        "乗用車経費": 50810
+      },
+      "通信費": {
+        "電話": 232578,
+        "ＢＧＭ": 63581,
+        "ＩＴ関連": 347186,
+        "郵便切手": 44904,
+        "その他": 3000,
+        "通信費・不課税": 6683
+      },
+      "消耗品費": {
+        "その他": 4536860,
+        "少額備品": 117800
+      },
+      "修繕費": {
+        "保守料": 1368646,
+        "修繕費": 1279613
+      },
+      "保険料": {
+        "損害保険料": 322375
+      },
+      "租税公課": {
+        "租税公課": 195281
+      },
+      "研究費": {
+        "図書費": 13400,
+        "開発費": 2136
+      },
+      "雑費": {
+        "おしぼり": 600270,
+        "植木・マット": 2165170,
+        "清掃費": 1821315,
+        "クリーニング": 73640,
+        "衛生管理費": 599903,
+        "その他": 3500,
+        "会議費": 1421
+      },
+      "採用教育費": {
+        "採用報酬": 4023739,
+        "採用旅費": 232230,
+        "採用広告費": 1111200
+      },
+      "諸会費": {
+        "諸会費・不課税": 86000,
+        "諸会費・課税": 40000
+      },
+      "交際費": {
+        "交際費・不課税": 6100,
+        "交際費・課税": 16919
+      },
+      "派遣費用": {
+        "派遣費用": 515543
+      }
+    }
+  },
+  "2026-06": {
+    "year": 2026,
+    "month": 6,
+    "sourceFile": "2026_6_販管費.csv",
+    "totals": {
+      "賃借料": 39549501,
+      "寮費": 2461831,
+      "水道光熱費": 9966398,
+      "広告宣伝費": 2830485,
+      "支払手数料": 16141716,
+      "旅費交通費": 3902387,
+      "通信費": 721179,
+      "消耗品費": 5232563,
+      "修繕費": 2822308,
+      "保険料": 322375,
+      "租税公課": 224268,
+      "研究費": 14610,
+      "雑費": 4656623,
+      "採用教育費": 1883686,
+      "諸会費": 126000,
+      "交際費": 23080,
+      "派遣費用": 430748
+    },
+    "detail": {
+      "賃借料": {
+        "家賃": 33829992,
+        "共益費": 3781059,
+        "レンタル料": 1938450
+      },
+      "寮費": {
+        "寮費・非課税": 2189000,
+        "寮･共益費": 259700,
+        "寮費・課税": 13131
+      },
+      "水道光熱費": {
+        "電気": 6786548,
+        "ガス": 635277,
+        "水道": 1335996,
+        "その他": 1208577
+      },
+      "広告宣伝費": {
+        "販促・ＤＭ": 1064025,
+        "広告協賛": 1725900,
+        "会社案内": 10000,
+        "ディスプレイ": 30560
+      },
+      "支払手数料": {
+        "販売手数料・課税": 6296811,
+        "販売手数料・非課税": 3142685,
+        "ＩＴ関連費用": 444950,
+        "その他手数料・課税": 398039,
+        "事務手数料・課税": 5859231
+      },
+      "旅費交通費": {
+        "旅費交通費": 549680,
+        "通勤手当": 3310742,
+        "乗用車経費": 41965
+      },
+      "通信費": {
+        "電話": 342691,
+        "ＢＧＭ": 63580,
+        "ＩＴ関連": 276112,
+        "郵便切手": 35764,
+        "その他": 3000,
+        "通信費・不課税": 32
+      },
+      "消耗品費": {
+        "その他": 5080563,
+        "少額備品": 152000
+      },
+      "修繕費": {
+        "修繕費": 1450401,
+        "保守料": 1371907
+      },
+      "保険料": {
+        "損害保険料": 322375
+      },
+      "租税公課": {
+        "租税公課": 224268
+      },
+      "研究費": {
+        "図書費": 3400,
+        "開発費": 11210
+      },
+      "雑費": {
+        "おしぼり": 596354,
+        "植木・マット": 2179590,
+        "清掃費": 1572398,
+        "クリーニング": 65640,
+        "衛生管理費": 207742,
+        "その他": 11550,
+        "その他・非課税": 1530,
+        "会議費": 21819
+      },
+      "採用教育費": {
+        "採用報酬": 918638,
+        "採用広告費": 952320,
+        "教育研修費": 12728
+      },
+      "諸会費": {
+        "諸会費・不課税": 86000,
+        "諸会費・課税": 40000
+      },
+      "交際費": {
+        "交際費・不課税": 5000,
+        "交際費・課税": 18080
+      },
+      "派遣費用": {
+        "派遣費用": 430748
+      }
+    }
+  },
+  "2026-07": {
+    "year": 2026,
+    "month": 7,
+    "sourceFile": "2026_7_販管費.xlsx",
+    "totals": {
+      "賃借料": 41401898,
+      "寮費": 2433992,
+      "水道光熱費": 11157344,
+      "広告宣伝費": 3302301,
+      "支払手数料": 15833741,
+      "旅費交通費": 3830203,
+      "通信費": 707317,
+      "消耗品費": 6769885,
+      "修繕費": 2837165,
+      "保険料": 349205,
+      "租税公課": 218868,
+      "研究費": 50375,
+      "雑費": 5338469,
+      "採用教育費": 1647694,
+      "諸会費": 166053,
+      "交際費": 5000,
+      "派遣費用": 682141
+    },
+    "detail": {
+      "賃借料": {
+        "家賃": 35671489,
+        "共益費": 3773759,
+        "レンタル料": 1956650
+      },
+      "寮費": {
+        "寮費・非課税": 2171000,
+        "寮･共益費": 250500,
+        "寮費・課税": 12492
+      },
+      "水道光熱費": {
+        "電気": 7505002,
+        "ガス": 602052,
+        "水道": 1444268,
+        "その他": 1606022
+      },
+      "広告宣伝費": {
+        "販促・ＤＭ": 881899,
+        "広告協賛": 2050504,
+        "ディスプレイ": 259898,
+        "会社案内": 110000
+      },
+      "支払手数料": {
+        "販売手数料・課税": 6220059,
+        "販売手数料・非課税": 2885157,
+        "ＩＴ関連費用": 448600,
+        "その他手数料・課税": 422992,
+        "事務手数料・課税": 5856933
+      },
+      "旅費交通費": {
+        "旅費交通費": 447971,
+        "通勤手当": 3374513,
+        "乗用車経費": 7719
+      },
+      "通信費": {
+        "電話": 310410,
+        "郵便切手": 42665,
+        "ＢＧＭ": 63580,
+        "ＩＴ関連": 287621,
+        "その他": 3000,
+        "通信費・不課税": 41
+      },
+      "消耗品費": {
+        "その他": 6643885,
+        "少額備品": 126000
+      },
+      "修繕費": {
+        "保守料": 1722756,
+        "修繕費": 1114409
+      },
+      "保険料": {
+        "損害保険料": 349205
+      },
+      "租税公課": {
+        "租税公課": 218868
+      },
+      "研究費": {
+        "図書費": 13700,
+        "開発費": 36675
+      },
+      "雑費": {
+        "おしぼり": 743861,
+        "植木・マット": 2207640,
+        "清掃費": 1801606,
+        "衛生管理費": 504042,
+        "クリーニング": 76001,
+        "その他": 3200,
+        "会議費": 2119
+      },
+      "採用教育費": {
+        "採用報酬": 827000,
+        "採用広告費": 785420,
+        "教育研修費": 35274
+      },
+      "諸会費": {
+        "諸会費・不課税": 110000,
+        "諸会費・課税": 56053
+      },
+      "交際費": {
+        "交際費・不課税": 5000
+      },
+      "派遣費用": {
+        "派遣費用": 682141
+      }
+    }
+  },
+  "2026-08": {
+    "year": 2026,
+    "month": 8,
+    "sourceFile": "2026_8_販管費.xlsx",
+    "totals": {
+      "賃借料": 41755375,
+      "寮費": 2222104,
+      "水道光熱費": 11956719,
+      "広告宣伝費": 3952055,
+      "支払手数料": 17587997,
+      "旅費交通費": 4093179,
+      "通信費": 770864,
+      "消耗品費": 5560522,
+      "修繕費": 1739276,
+      "保険料": 322375,
+      "租税公課": 224296,
+      "研究費": 16528,
+      "雑費": 5224821,
+      "採用教育費": 1611970,
+      "諸会費": 228000,
+      "交際費": 5000,
+      "派遣費用": 706573
+    },
+    "detail": {
+      "賃借料": {
+        "家賃": 35965406,
+        "共益費": 3788959,
+        "レンタル料": 1942930,
+        "保管料": 58080
+      },
+      "寮費": {
+        "寮費・非課税": 1990903,
+        "寮･共益費": 203709,
+        "寮費・課税": 27492
+      },
+      "水道光熱費": {
+        "電気": 8156070,
+        "ガス": 577790,
+        "水道": 1459013,
+        "その他": 1763846
+      },
+      "広告宣伝費": {
+        "販促・ＤＭ": 1791903,
+        "広告協賛": 1993584,
+        "会社案内": 10000,
+        "ディスプレイ": 6568,
+        "その他": 150000
+      },
+      "支払手数料": {
+        "販売手数料・課税": 7200160,
+        "販売手数料・非課税": 3491041,
+        "ＩＴ関連費用": 448600,
+        "その他手数料・課税": 583627,
+        "事務手数料・課税": 5860069,
+        "その他手数料・非課税": 4500
+      },
+      "旅費交通費": {
+        "通勤手当": 3616907,
+        "旅費交通費": 465953,
+        "乗用車経費": 10319
+      },
+      "通信費": {
+        "電話": 370972,
+        "ＢＧＭ": 63580,
+        "ＩＴ関連": 275182,
+        "郵便切手": 57946,
+        "その他": 3000,
+        "通信費・不課税": 184
+      },
+      "消耗品費": {
+        "その他": 5229123,
+        "少額備品": 331399
+      },
+      "修繕費": {
+        "修繕費": 450370,
+        "保守料": 1288906
+      },
+      "保険料": {
+        "損害保険料": 322375
+      },
+      "租税公課": {
+        "租税公課": 221468,
+        "源泉税": 2828
+      },
+      "研究費": {
+        "図書費": 3700,
+        "開発費": 12828
+      },
+      "雑費": {
+        "おしぼり": 692884,
+        "植木・マット": 2162670,
+        "清掃費": 1830751,
+        "衛生管理費": 384911,
+        "クリーニング": 80295,
+        "その他": 2400,
+        "会議費": 70910
+      },
+      "採用教育費": {
+        "採用報酬": 827000,
+        "採用広告費": 784970
+      },
+      "諸会費": {
+        "諸会費・不課税": 188000,
+        "諸会費・課税": 40000
+      },
+      "交際費": {
+        "交際費・不課税": 5000
+      },
+      "派遣費用": {
+        "派遣費用": 706573
+      }
+    }
   }
 };
 
@@ -2163,7 +2904,7 @@ const SEED_DATA = {
 /*  にしており、実績側の "YYYY-MM" キーから月番号を取り出して参照する  */
 /* ------------------------------------------------------------------ */
 
-const BUDGET_DATA = {
+const BUDGET_DATA_HD = {
   寮費: {
     4: 77000,
     5: 77000,
@@ -2291,9 +3032,154 @@ const BUDGET_DATA = {
     3: 0
   }
 };
+
+// 千房(株)（全社）予算：「_千房最終_第22期損益予算_0331承認.xlsx」の「全社計」シートより抽出
+// 単位：円（元データは千円のため1,000倍済み）。4〜8月のみ（実績データの取込済み範囲に合わせる）
+const BUDGET_DATA_COMPANY = {
+  派遣費用: {
+    4: 314,
+    5: 250314,
+    6: 314,
+    7: 314,
+    8: 250314
+  },
+  採用教育費: {
+    4: 2477000,
+    5: 1677000,
+    6: 1730000,
+    7: 1861000,
+    8: 1827000
+  },
+  賃借料: {
+    4: 42497000,
+    5: 42589000,
+    6: 42476000,
+    7: 42935000,
+    8: 44806000
+  },
+  リース料: {
+    4: 270000,
+    5: 270000,
+    6: 272000,
+    7: 293000,
+    8: 272000
+  },
+  寮費: {
+    4: 4113000,
+    5: 3532000,
+    6: 3532000,
+    7: 3532000,
+    8: 3532000
+  },
+  水道光熱費: {
+    4: 8972000,
+    5: 9133000,
+    6: 10196000,
+    7: 11408000,
+    8: 12414000
+  },
+  広告宣伝費: {
+    4: 3156976,
+    5: 3545700,
+    6: 3029885,
+    7: 3156599,
+    8: 3368199
+  },
+  支払手数料: {
+    4: 37470000,
+    5: 37216000,
+    6: 38066000,
+    7: 37442000,
+    8: 39482000
+  },
+  支払運賃: {
+    4: 50000,
+    5: 21000,
+    6: 21000,
+    7: 24000,
+    8: 21000
+  },
+  旅費交通費: {
+    4: 5888000,
+    5: 4642000,
+    6: 4527000,
+    7: 4573000,
+    8: 4583000
+  },
+  通信費: {
+    4: 743000,
+    5: 655000,
+    6: 655000,
+    7: 663000,
+    8: 655000
+  },
+  交際費: {
+    4: 359000,
+    5: 489000,
+    6: 361000,
+    7: 781000,
+    8: 453000
+  },
+  消耗品費: {
+    4: 5023000,
+    5: 4651000,
+    6: 4490000,
+    7: 4499000,
+    8: 4901000
+  },
+  修繕費: {
+    4: 6141000,
+    5: 3752000,
+    6: 2413000,
+    7: 2861000,
+    8: 4960000
+  },
+  保険料: {
+    4: 1641000,
+    5: 1353000,
+    6: 2224000,
+    7: 561000,
+    8: 626000
+  },
+  租税公課: {
+    4: 292000,
+    5: 292000,
+    6: 293000,
+    7: 426000,
+    8: 293000
+  },
+  研究費: {
+    4: 15000,
+    5: 59000,
+    6: 45000,
+    7: 95000,
+    8: 45000
+  },
+  事務用消耗品費: {
+    4: 0,
+    5: 0,
+    6: 0,
+    7: 0,
+    8: 0
+  },
+  諸会費: {
+    4: 469000,
+    5: 467000,
+    6: 912000,
+    7: 567000,
+    8: 849000
+  },
+  雑費: {
+    4: 5144000,
+    5: 6328000,
+    6: 4592000,
+    7: 4825000,
+    8: 4802000
+  }
+};
 const monthNumOf = key => parseInt(key.split("-")[1], 10);
-const budgetFor = (account, key) => BUDGET_DATA[account]?.[monthNumOf(key)];
-const hasBudget = account => Object.prototype.hasOwnProperty.call(BUDGET_DATA, account);
+const budgetFor = (table, account, key) => table?.[account]?.[monthNumOf(key)];
+const hasBudget = (table, account) => Object.prototype.hasOwnProperty.call(table || {}, account);
 
 /* ------------------------------------------------------------------ */
 /*  フォント読み込み + グローバルスタイル                              */
@@ -2384,7 +3270,9 @@ function Sidebar({
   setPage,
   monthCount,
   latestLabel,
-  syncStatus
+  syncStatus,
+  entity,
+  setEntity
 }) {
   const items = [{
     id: "dashboard",
@@ -2428,15 +3316,57 @@ function Sidebar({
     style: {
       color: "#8B93A7"
     }
-  }, "営業推進本部"))), /*#__PURE__*/React.createElement("div", {
-    className: "mt-4 text-[11px] px-3 py-2 rounded-md space-y-1.5",
+  }, entity === "company" ? "千房株式会社" : "営業推進本部"))), /*#__PURE__*/React.createElement("div", {
+    className: "mt-4 grid grid-cols-2 gap-1 p-1 rounded-lg",
+    style: {
+      background: "rgba(255,255,255,0.06)"
+    }
+  }, [{
+    id: "hd",
+    label: "千房HD(株)"
+  }, {
+    id: "company",
+    label: "千房(株)"
+  }].map(t => /*#__PURE__*/React.createElement("button", {
+    key: t.id,
+    onClick: () => setEntity(t.id),
+    className: "text-xs py-1.5 rounded-md transition-colors",
+    style: {
+      background: entity === t.id ? "var(--accent)" : "transparent",
+      color: entity === t.id ? "#fff" : "#B7BECF",
+      fontWeight: entity === t.id ? 600 : 400
+    }
+  }, t.label))), /*#__PURE__*/React.createElement("div", {
+    className: "mt-3 text-[11px] px-3 py-2 rounded-md space-y-1.5",
     style: {
       background: "rgba(255,255,255,0.06)",
       color: "#B7BECF"
     }
   }, /*#__PURE__*/React.createElement("div", null, "取込済み：", monthCount, "ヶ月分", latestLabel && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("br", null), "最新：", latestLabel)), /*#__PURE__*/React.createElement(SyncBadge, {
     syncStatus: syncStatus
-  }))), /*#__PURE__*/React.createElement("nav", {
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "md:hidden px-3 pt-2"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "grid grid-cols-2 gap-1 p-1 rounded-lg",
+    style: {
+      background: "rgba(255,255,255,0.06)"
+    }
+  }, [{
+    id: "hd",
+    label: "千房HD(株)"
+  }, {
+    id: "company",
+    label: "千房(株)"
+  }].map(t => /*#__PURE__*/React.createElement("button", {
+    key: t.id,
+    onClick: () => setEntity(t.id),
+    className: "text-xs py-1.5 rounded-md transition-colors",
+    style: {
+      background: entity === t.id ? "var(--accent)" : "transparent",
+      color: entity === t.id ? "#fff" : "#B7BECF",
+      fontWeight: entity === t.id ? 600 : 400
+    }
+  }, t.label)))), /*#__PURE__*/React.createElement("nav", {
     className: "flex md:flex-col flex-1 md:mt-2 md:px-3 gap-1 px-2 py-2 md:py-0 overflow-x-auto"
   }, items.map(it => {
     const Icon = it.icon;
@@ -2873,9 +3803,10 @@ function VarianceTag({
 function BudgetComparisonPage({
   monthsData,
   sortedKeys,
-  accountOrder
+  accountOrder,
+  budgetTable
 }) {
-  const budgetAccounts = useMemo(() => accountOrder.filter(hasBudget), [accountOrder]);
+  const budgetAccounts = useMemo(() => accountOrder.filter(a => hasBudget(budgetTable, a)), [accountOrder, budgetTable]);
   const [selectedKey, setSelectedKey] = useState(sortedKeys[sortedKeys.length - 1] || "");
   const [mode, setMode] = useState("single"); // "single" | "cumulative"
 
@@ -2900,7 +3831,7 @@ function BudgetComparisonPage({
   const keysInScope = mode === "cumulative" ? sortedKeys.slice(0, selIdx + 1) : [selectedKey];
   const rows = budgetAccounts.map(acc => {
     const actual = keysInScope.reduce((s, k) => s + (monthsData[k].totals[acc] || 0), 0);
-    const budget = keysInScope.reduce((s, k) => s + (budgetFor(acc, k) || 0), 0);
+    const budget = keysInScope.reduce((s, k) => s + (budgetFor(budgetTable, acc, k) || 0), 0);
     const diff = actual - budget;
     const pct = budget !== 0 ? diff / budget * 100 : actual !== 0 ? 100 : 0;
     return {
@@ -3172,7 +4103,8 @@ function BudgetComparisonPage({
 function ItemDetailPage({
   monthsData,
   sortedKeys,
-  accountOrder
+  accountOrder,
+  budgetTable
 }) {
   const [selectedAccount, setSelectedAccount] = useState(accountOrder[0] || "");
   const [detailMonth, setDetailMonth] = useState(sortedKeys[sortedKeys.length - 1] || "");
@@ -3201,11 +4133,11 @@ function ItemDetailPage({
     }));
   }
   const acc = selectedAccount;
-  const accHasBudget = hasBudget(acc);
+  const accHasBudget = hasBudget(budgetTable, acc);
   const trend = sortedKeys.map(k => ({
     label: shortMonthLabel(monthsData[k].year, monthsData[k].month),
     実績: monthsData[k].totals[acc] || 0,
-    予算: accHasBudget ? budgetFor(acc, k) || 0 : null
+    予算: accHasBudget ? budgetFor(budgetTable, acc, k) || 0 : null
   }));
   const subKeys = useMemo(() => {
     const set = new Set();
@@ -3216,7 +4148,7 @@ function ItemDetailPage({
     return Array.from(set);
   }, [sortedKeys, monthsData, acc]);
   const total = sortedKeys.reduce((s, k) => s + (monthsData[k].totals[acc] || 0), 0);
-  const budgetTotal = accHasBudget ? sortedKeys.reduce((s, k) => s + (budgetFor(acc, k) || 0), 0) : null;
+  const budgetTotal = accHasBudget ? sortedKeys.reduce((s, k) => s + (budgetFor(budgetTable, acc, k) || 0), 0) : null;
   const avg = sortedKeys.length ? total / sortedKeys.length : 0;
   const maxMonth = sortedKeys.reduce((best, k) => (monthsData[k].totals[acc] || 0) > (best ? monthsData[best].totals[acc] || 0 : -Infinity) ? k : best, null);
   const handleDownload = () => {
@@ -3226,7 +4158,7 @@ function ItemDetailPage({
       const actual = monthsData[k].totals[acc] || 0;
       const row = [monthLabel(monthsData[k].year, monthsData[k].month), actual];
       if (accHasBudget) {
-        const b = budgetFor(acc, k) || 0;
+        const b = budgetFor(budgetTable, acc, k) || 0;
         row.push(b, actual - b);
       }
       subKeys.forEach(s => row.push(monthsData[k].detail?.[acc]?.[s] ?? 0));
@@ -3554,8 +4486,15 @@ function ItemDetailPage({
 /*  アップロードページ                                                 */
 /* ------------------------------------------------------------------ */
 
+function detectEntity(filename) {
+  return /営業推進本部/.test(filename) ? "hd" : "company";
+}
+const ENTITY_LABELS = {
+  hd: "千房HD(株)",
+  company: "千房(株)"
+};
 function UploadPage({
-  monthsData,
+  monthsDataByEntity,
   onImport
 }) {
   const [pending, setPending] = useState([]);
@@ -3564,9 +4503,11 @@ function UploadPage({
   const idRef = useRef(0);
   const parseFile = async file => {
     const id = ++idRef.current;
+    const entity = detectEntity(file.name);
     const entry = {
       id,
       name: file.name,
+      entity,
       status: "parsing",
       year: null,
       month: null,
@@ -3578,11 +4519,13 @@ function UploadPage({
     try {
       const isCsv = /\.csv$/i.test(file.name);
       const rows = isCsv ? await readCsvRows(file) : await readXlsxRows(file);
+      const aggregated = entry.entity === "company" ? aggregateCompanyRows(rows) : aggregateRows(rows);
       const {
         totals,
         detail,
         lines
-      } = aggregateRows(rows);
+      } = aggregated;
+      const prototypeCost = aggregated.prototypeCost; // company側のみ定義される
       const ym = parseFilenameYearMonth(file.name);
       if (Object.keys(totals).length === 0) {
         throw new Error("集計対象のデータが見つかりませんでした");
@@ -3595,6 +4538,7 @@ function UploadPage({
         totals,
         detail,
         lines,
+        prototypeCost,
         total: Object.values(totals).reduce((a, b) => a + b, 0)
       } : e));
     } catch (err) {
@@ -3614,10 +4558,17 @@ function UploadPage({
       [field]: parseInt(value, 10) || 1
     } : e));
   };
+  const updateEntity = (id, entity) => {
+    setPending(p => p.map(e => e.id === id ? {
+      ...e,
+      entity
+    } : e));
+  };
   const confirmImport = async entry => {
     const key = keyOf(entry.year, entry.month);
-    if (monthsData[key]) {
-      const ok = window.confirm(`${monthLabel(entry.year, entry.month)}のデータは既に取り込まれています。上書きしますか？`);
+    const existingForEntity = monthsDataByEntity[entry.entity] || {};
+    if (existingForEntity[key]) {
+      const ok = window.confirm(`${ENTITY_LABELS[entry.entity]}の${monthLabel(entry.year, entry.month)}のデータは既に取り込まれています。上書きしますか？`);
       if (!ok) return;
     }
     setPending(p => p.map(e => e.id === entry.id ? {
@@ -3683,7 +4634,7 @@ function UploadPage({
     style: {
       color: "var(--text-sub)"
     }
-  }, "「営業推進本部_販管費」の月次資料（.xlsx / .csv）に対応・複数選択可"), /*#__PURE__*/React.createElement("input", {
+  }, "「営業推進本部_販管費」（千房HD(株)）または「販管費」（千房(株)）の月次資料（.xlsx / .csv）に対応・複数選択可・ファイル名から自動判定"), /*#__PURE__*/React.createElement("input", {
     ref: fileInputRef,
     type: "file",
     multiple: true,
@@ -3741,9 +4692,21 @@ function UploadPage({
     style: {
       color: "var(--text-sub)"
     }
-  }, "科目 ", Object.keys(e.totals).length, "件 ・ 合計 ¥", yen(e.total)))), (e.status === "ready" || e.status === "needs-date") && /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center gap-2 shrink-0"
-  }, e.status === "needs-date" && /*#__PURE__*/React.createElement("span", {
+  }, "科目 ", Object.keys(e.totals).length, "件 ・ 合計 ¥", yen(e.total), e.entity === "company" && e.prototypeCost > 0 && /*#__PURE__*/React.createElement(React.Fragment, null, " ・ 試作費用連携 ¥", yen(e.prototypeCost))))), (e.status === "ready" || e.status === "needs-date") && /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-2 shrink-0 flex-wrap"
+  }, /*#__PURE__*/React.createElement("select", {
+    value: e.entity,
+    onChange: ev => updateEntity(e.id, ev.target.value),
+    className: "text-xs px-2 py-1.5 rounded-md font-body",
+    style: {
+      border: "1px solid var(--line)",
+      color: "var(--text-main)"
+    }
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "hd"
+  }, "千房HD(株)"), /*#__PURE__*/React.createElement("option", {
+    value: "company"
+  }, "千房(株)")), e.status === "needs-date" && /*#__PURE__*/React.createElement("span", {
     className: "text-xs",
     style: {
       color: "var(--text-sub)"
@@ -3795,7 +4758,7 @@ function UploadPage({
     }
   }, /*#__PURE__*/React.createElement(CheckCircle2, {
     size: 14
-  }), " ", monthLabel(e.year, e.month), " を取込済み"), e.status === "error" && /*#__PURE__*/React.createElement("button", {
+  }), " ", ENTITY_LABELS[e.entity], " ", monthLabel(e.year, e.month), " を取込済み"), e.status === "error" && /*#__PURE__*/React.createElement("button", {
     onClick: () => removePending(e.id),
     className: "p-1.5 shrink-0"
   }, /*#__PURE__*/React.createElement(X, {
@@ -3804,11 +4767,16 @@ function UploadPage({
       color: "var(--text-sub)"
     }
   }))))), /*#__PURE__*/React.createElement(ImportedList, {
-    monthsData: monthsData
+    monthsData: monthsDataByEntity.hd,
+    label: "千房HD(株)"
+  }), /*#__PURE__*/React.createElement(ImportedList, {
+    monthsData: monthsDataByEntity.company,
+    label: "千房(株)"
   }));
 }
 function ImportedList({
-  monthsData
+  monthsData,
+  label
 }) {
   const keys = Object.keys(monthsData).sort();
   if (keys.length === 0) return null;
@@ -3823,7 +4791,7 @@ function ImportedList({
     style: {
       color: "var(--text-main)"
     }
-  }, "取込済みの月"), /*#__PURE__*/React.createElement("div", {
+  }, "取込済みの月（", label, "）"), /*#__PURE__*/React.createElement("div", {
     className: "flex flex-wrap gap-2"
   }, keys.map(k => /*#__PURE__*/React.createElement("span", {
     key: k,
@@ -3841,47 +4809,87 @@ function ImportedList({
 /* ------------------------------------------------------------------ */
 
 function App() {
+  const [entity, setEntity] = useState("hd"); // "hd" | "company"
   const [page, setPage] = useState("dashboard");
-  const [monthsData, setMonthsData] = useState({});
+  const [monthsDataHD, setMonthsDataHD] = useState({});
+  const [monthsDataCompany, setMonthsDataCompany] = useState({});
   const [loading, setLoading] = useState(true);
   const [syncStatus, setSyncStatus] = useState("checking");
+  const loadEntity = useCallback(async (prefix, seed, setter) => {
+    const listRes = await window.storage.list(prefix, false);
+    if (listRes && listRes.keys && listRes.keys.length > 0) {
+      const loaded = {};
+      for (const k of listRes.keys) {
+        try {
+          const r = await window.storage.get(k, false);
+          if (r && r.value) {
+            const parsed = JSON.parse(r.value);
+            loaded[keyOf(parsed.year, parsed.month)] = parsed;
+          }
+        } catch {
+          /* skip unreadable entry */
+        }
+      }
+      setter(loaded);
+    } else {
+      setter(seed);
+      for (const key of Object.keys(seed)) {
+        try {
+          await window.storage.set(prefix + key, JSON.stringify(seed[key]), false);
+        } catch {
+          /* storage unavailable, keep in-memory seed */
+        }
+      }
+    }
+  }, []);
   useEffect(() => {
     (async () => {
       try {
-        const listRes = await window.storage.list(STORAGE_PREFIX, false);
+        await loadEntity(STORAGE_PREFIX_HD, SEED_DATA_HD, setMonthsDataHD);
+        await loadEntity(STORAGE_PREFIX_COMPANY, SEED_DATA_COMPANY, setMonthsDataCompany);
         setSyncStatus(window.storage.getStatus ? window.storage.getStatus() : "unconfigured");
-        if (listRes && listRes.keys && listRes.keys.length > 0) {
-          const loaded = {};
-          for (const k of listRes.keys) {
-            try {
-              const r = await window.storage.get(k, false);
-              if (r && r.value) {
-                const parsed = JSON.parse(r.value);
-                loaded[keyOf(parsed.year, parsed.month)] = parsed;
-              }
-            } catch {
-              /* skip unreadable entry */
-            }
-          }
-          setMonthsData(loaded);
-        } else {
-          setMonthsData(SEED_DATA);
-          for (const key of Object.keys(SEED_DATA)) {
-            try {
-              await window.storage.set(STORAGE_PREFIX + key, JSON.stringify(SEED_DATA[key]), false);
-            } catch {
-              /* storage unavailable, keep in-memory seed */
-            }
-          }
-          setSyncStatus(window.storage.getStatus ? window.storage.getStatus() : "unconfigured");
-        }
       } catch {
-        setMonthsData(SEED_DATA);
+        setMonthsDataHD(SEED_DATA_HD);
+        setMonthsDataCompany(SEED_DATA_COMPANY);
         setSyncStatus("local-only");
       } finally {
         setLoading(false);
       }
     })();
+  }, [loadEntity]);
+
+  // 千房(株)「営業本部共通／研究費／開発費」の金額を、千房HD(株)側に
+  // 「試作費用」という科目として自動連携する
+  const injectPrototypeCost = useCallback(async (monthKey, amount) => {
+    setMonthsDataHD(prev => {
+      const [y, m] = monthKey.split("-").map(v => parseInt(v, 10));
+      const existing = prev[monthKey] || {
+        year: y,
+        month: m,
+        sourceFile: "千房(株)販管費（営業本部共通）より自動連携",
+        totals: {},
+        detail: {},
+        lines: {}
+      };
+      const updated = {
+        ...existing,
+        totals: {
+          ...existing.totals,
+          試作費用: amount
+        },
+        detail: {
+          ...existing.detail,
+          試作費用: {
+            試作費用: amount
+          }
+        }
+      };
+      window.storage.set(STORAGE_PREFIX_HD + monthKey, JSON.stringify(updated), false).catch(() => {});
+      return {
+        ...prev,
+        [monthKey]: updated
+      };
+    });
   }, []);
   const handleImport = useCallback(async entry => {
     const payload = {
@@ -3893,22 +4901,30 @@ function App() {
       lines: entry.lines
     };
     const key = keyOf(entry.year, entry.month);
+    const prefix = entry.entity === "company" ? STORAGE_PREFIX_COMPANY : STORAGE_PREFIX_HD;
+    const setter = entry.entity === "company" ? setMonthsDataCompany : setMonthsDataHD;
     try {
-      await window.storage.set(STORAGE_PREFIX + key, JSON.stringify(payload), false);
+      await window.storage.set(prefix + key, JSON.stringify(payload), false);
       setSyncStatus(window.storage.getStatus ? window.storage.getStatus() : "unconfigured");
     } catch {
       setSyncStatus(window.storage.getStatus ? window.storage.getStatus() : "local-only");
       /* fall through to local state even if persistence fails */
     }
-    setMonthsData(prev => ({
+    setter(prev => ({
       ...prev,
       [key]: payload
     }));
-  }, []);
+    if (entry.entity === "company" && typeof entry.prototypeCost === "number") {
+      await injectPrototypeCost(key, Math.round(entry.prototypeCost));
+    }
+  }, [injectPrototypeCost]);
+  const monthsData = entity === "company" ? monthsDataCompany : monthsDataHD;
+  const knownCodes = entity === "company" ? KNOWN_ACCOUNT_CODES_COMPANY : KNOWN_ACCOUNT_CODES_HD;
+  const budgetTable = entity === "company" ? BUDGET_DATA_COMPANY : BUDGET_DATA_HD;
   const sortedKeys = useMemo(() => Object.keys(monthsData).sort(), [monthsData]);
   const accountOrder = useMemo(() => {
     const codeMap = {
-      ...KNOWN_ACCOUNT_CODES
+      ...knownCodes
     };
     const names = new Set();
     sortedKeys.forEach(k => Object.keys(monthsData[k].totals).forEach(n => names.add(n)));
@@ -3917,7 +4933,7 @@ function App() {
       const cb = codeMap[b] || "999" + b;
       return String(ca).localeCompare(String(cb), "ja");
     });
-  }, [monthsData, sortedKeys]);
+  }, [monthsData, sortedKeys, knownCodes]);
   const latestKey = sortedKeys[sortedKeys.length - 1];
   return /*#__PURE__*/React.createElement("div", {
     className: "flex flex-col md:flex-row min-h-full w-full font-body",
@@ -3929,7 +4945,9 @@ function App() {
     setPage: setPage,
     monthCount: sortedKeys.length,
     latestLabel: latestKey ? monthLabel(monthsData[latestKey].year, monthsData[latestKey].month) : "",
-    syncStatus: syncStatus
+    syncStatus: syncStatus,
+    entity: entity,
+    setEntity: setEntity
   }), /*#__PURE__*/React.createElement("div", {
     className: "flex-1 min-w-0 p-5 md:p-8"
   }, /*#__PURE__*/React.createElement("div", {
@@ -3944,7 +4962,7 @@ function App() {
     style: {
       color: "var(--text-sub)"
     }
-  }, "営業推進本部 販管費 ／ 千房ホールディングス株式会社")), loading ? /*#__PURE__*/React.createElement("div", {
+  }, entity === "company" ? "販管費（全社・全店舗） ／ 千房株式会社" : "営業推進本部 販管費 ／ 千房ホールディングス株式会社")), loading ? /*#__PURE__*/React.createElement("div", {
     className: "flex items-center gap-2 text-sm py-16 justify-center",
     style: {
       color: "var(--text-sub)"
@@ -3959,7 +4977,8 @@ function App() {
   }), page === "budget" && /*#__PURE__*/React.createElement(BudgetComparisonPage, {
     monthsData: monthsData,
     sortedKeys: sortedKeys,
-    accountOrder: accountOrder
+    accountOrder: accountOrder,
+    budgetTable: budgetTable
   }), page === "pivot" && /*#__PURE__*/React.createElement(PivotPage, {
     monthsData: monthsData,
     sortedKeys: sortedKeys,
@@ -3967,9 +4986,13 @@ function App() {
   }), page === "detail" && /*#__PURE__*/React.createElement(ItemDetailPage, {
     monthsData: monthsData,
     sortedKeys: sortedKeys,
-    accountOrder: accountOrder
+    accountOrder: accountOrder,
+    budgetTable: budgetTable
   }), page === "upload" && /*#__PURE__*/React.createElement(UploadPage, {
-    monthsData: monthsData,
+    monthsDataByEntity: {
+      hd: monthsDataHD,
+      company: monthsDataCompany
+    },
     onImport: handleImport
   }))));
 }
