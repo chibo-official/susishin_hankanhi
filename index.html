@@ -4388,7 +4388,8 @@ function ItemDetailPage({
   monthsData,
   sortedKeys,
   accountOrder,
-  budgetTable
+  budgetTable,
+  entity
 }) {
   const [selectedAccount, setSelectedAccount] = useState(accountOrder[0] || "");
   const [detailMonth, setDetailMonth] = useState(sortedKeys[sortedKeys.length - 1] || "");
@@ -4694,7 +4695,7 @@ function ItemDetailPage({
   }), "CSV"))), !hasLineData ? /*#__PURE__*/React.createElement("div", {
     className: "px-5 pb-5"
   }, /*#__PURE__*/React.createElement(EmptyNote, {
-    text: "この月のデータには明細情報が含まれていません（明細対応前に取り込まれたデータの可能性があります。該当の資料を再アップロードすると表示されます）。"
+    text: entity === "company" ? "千房(株)は部門数・取引件数が多いため、明細（個別取引）は共有していません。科目別合計・細目内訳は上の表でご確認いただけます。" : "この月のデータには明細情報が含まれていません（明細対応前に取り込まれたデータの可能性があります。該当の資料を再アップロードすると表示されます）。"
   })) : /*#__PURE__*/React.createElement("div", {
     className: "px-2 pb-3"
   }, monthLineSubKeys.map(sub => {
@@ -5117,6 +5118,7 @@ function App() {
         }
       }
       setter(loaded);
+      return loaded;
     } else {
       setter(seed);
       for (const key of Object.keys(seed)) {
@@ -5126,6 +5128,7 @@ function App() {
           /* storage unavailable, keep in-memory seed */
         }
       }
+      return seed;
     }
   }, []);
 
@@ -5194,11 +5197,31 @@ function App() {
       };
     });
   }, []);
+
+  // 千房(株)は部門数・取引件数が多く、明細（個別取引）を保存すると読み込みが
+  // 大幅に遅くなるため共有しない方針にした。過去に明細付きで保存された月が
+  // 残っていれば、起動時に検出して取り除く（読み込み速度の自己修復）
+  const stripCompanyLines = useCallback(async monthKey => {
+    setMonthsDataCompany(prev => {
+      const existing = prev[monthKey];
+      const hasLines = existing && existing.lines && Object.keys(existing.lines).length > 0;
+      if (!hasLines) return prev;
+      const updated = {
+        ...existing,
+        lines: {}
+      };
+      window.storage.set(STORAGE_PREFIX_COMPANY + monthKey, JSON.stringify(updated), false).catch(() => {});
+      return {
+        ...prev,
+        [monthKey]: updated
+      };
+    });
+  }, []);
   useEffect(() => {
     (async () => {
       try {
         await loadEntity(STORAGE_PREFIX_HD, SEED_DATA_HD, setMonthsDataHD);
-        await loadEntity(STORAGE_PREFIX_COMPANY, SEED_DATA_COMPANY, setMonthsDataCompany);
+        const loadedCompany = await loadEntity(STORAGE_PREFIX_COMPANY, SEED_DATA_COMPANY, setMonthsDataCompany);
         setSyncStatus(window.storage.getStatus ? window.storage.getStatus() : "unconfigured");
         // 既にスプレッドシートに保存済みで「試作費用」を含まない月にも確実に反映されるよう、
         // 判明している金額（PROTOTYPE_COST_FALLBACK）を起動時に必ず注入する
@@ -5209,6 +5232,10 @@ function App() {
         for (const [mk, seedMonth] of Object.entries(SEED_DATA_COMPANY)) {
           await applyCompanyCorrection(mk, seedMonth.totals, seedMonth.detail);
         }
+        // 千房(株)側に明細（個別取引）が保存されている月があれば取り除く（読み込み速度対策）
+        for (const mk of Object.keys(loadedCompany || {})) {
+          await stripCompanyLines(mk);
+        }
       } catch {
         setMonthsDataHD(SEED_DATA_HD);
         setMonthsDataCompany(SEED_DATA_COMPANY);
@@ -5217,7 +5244,7 @@ function App() {
         setLoading(false);
       }
     })();
-  }, [loadEntity, injectPrototypeCost, applyCompanyCorrection]);
+  }, [loadEntity, injectPrototypeCost, applyCompanyCorrection, stripCompanyLines]);
   const handleImport = useCallback(async entry => {
     const payload = {
       year: entry.year,
@@ -5225,7 +5252,9 @@ function App() {
       sourceFile: entry.name,
       totals: entry.totals,
       detail: entry.detail,
-      lines: entry.lines,
+      // 千房(株)は部門数・取引件数が多いため、明細（個別取引）は共有スプレッド
+      // シートに保存しない（科目別合計・細目内訳のみ共有し、読み込みを高速に保つ）
+      lines: entry.entity === "company" ? {} : entry.lines,
       ...(entry.entity === "company" && typeof entry.prototypeCost === "number" ? {
         prototypeCost: Math.round(entry.prototypeCost)
       } : {})
@@ -5318,7 +5347,8 @@ function App() {
     monthsData: monthsData,
     sortedKeys: sortedKeys,
     accountOrder: accountOrder,
-    budgetTable: budgetTable
+    budgetTable: budgetTable,
+    entity: entity
   }), page === "upload" && /*#__PURE__*/React.createElement(UploadPage, {
     monthsDataByEntity: {
       hd: monthsDataHD,
