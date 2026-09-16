@@ -3498,9 +3498,14 @@ function GlobalStyle() {
         border-radius: 9999px;
         transform: rotate(-7deg);
       }
+      .ledger-scroll { -webkit-overflow-scrolling: touch; }
       .ledger-scroll::-webkit-scrollbar { height: 8px; width: 8px; }
       .ledger-scroll::-webkit-scrollbar-thumb { background: #D8CFBB; border-radius: 4px; }
       .ledger-scroll::-webkit-scrollbar-track { background: transparent; }
+      button, select, input { -webkit-tap-highlight-color: transparent; }
+      @media (max-width: 767px) {
+        table { font-size: 12px; }
+      }
       @keyframes fadeIn { from { opacity: 0; transform: translateY(4px);} to { opacity:1; transform:translateY(0);} }
       .fade-in { animation: fadeIn .25s ease-out; }
     `);
@@ -3511,7 +3516,8 @@ function GlobalStyle() {
 /* ------------------------------------------------------------------ */
 
 function SyncBadge({
-  syncStatus
+  syncStatus,
+  compact
 }) {
   const cfg = {
     connected: {
@@ -3534,6 +3540,17 @@ function SyncBadge({
     dot: "#6B7280",
     label: ""
   };
+  if (compact) {
+    return /*#__PURE__*/React.createElement("span", {
+      className: "inline-block rounded-full shrink-0",
+      style: {
+        width: 8,
+        height: 8,
+        background: cfg.dot
+      },
+      title: cfg.label
+    });
+  }
   return /*#__PURE__*/React.createElement("div", {
     className: "flex items-center gap-1.5 text-[10px]",
     style: {
@@ -3547,6 +3564,33 @@ function SyncBadge({
       background: cfg.dot
     }
   }), cfg.label);
+}
+function EntityToggle({
+  entity,
+  setEntity,
+  size = "normal"
+}) {
+  return /*#__PURE__*/React.createElement("div", {
+    className: "grid grid-cols-2 gap-1 p-1 rounded-lg",
+    style: {
+      background: "rgba(255,255,255,0.06)"
+    }
+  }, [{
+    id: "hd",
+    label: "千房HD(株)"
+  }, {
+    id: "company",
+    label: "千房(株)"
+  }].map(t => /*#__PURE__*/React.createElement("button", {
+    key: t.id,
+    onClick: () => setEntity(t.id),
+    className: `rounded-md transition-colors ${size === "compact" ? "text-[11px] py-2" : "text-xs py-1.5"}`,
+    style: {
+      background: entity === t.id ? "var(--accent)" : "transparent",
+      color: entity === t.id ? "#fff" : "#B7BECF",
+      fontWeight: entity === t.id ? 600 : 400
+    }
+  }, t.label)));
 }
 function Sidebar({
   page,
@@ -3579,12 +3623,33 @@ function Sidebar({
     icon: UploadCloud
   }];
   return /*#__PURE__*/React.createElement("div", {
-    className: "flex md:flex-col w-full md:w-64 shrink-0 font-body",
+    className: "w-full md:w-64 md:shrink-0 font-body",
     style: {
       background: "var(--ink)"
     }
   }, /*#__PURE__*/React.createElement("div", {
-    className: "px-5 pt-6 pb-5 hidden md:block"
+    className: "flex md:hidden items-center justify-between px-4 py-3"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-2.5"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "stamp w-8 h-8 flex items-center justify-center font-display text-sm shrink-0",
+    style: {
+      background: "rgba(169,64,42,0.08)"
+    }
+  }, "費"), /*#__PURE__*/React.createElement("div", {
+    className: "text-white font-display text-sm leading-tight tracking-wide"
+  }, "販管費管理")), /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-2"
+  }, /*#__PURE__*/React.createElement(SyncBadge, {
+    syncStatus: syncStatus,
+    compact: true
+  }), latestLabel && /*#__PURE__*/React.createElement("span", {
+    className: "text-[11px]",
+    style: {
+      color: "#8B93A7"
+    }
+  }, "最新 ", latestLabel))), /*#__PURE__*/React.createElement("div", {
+    className: "hidden md:block px-5 pt-6 pb-5"
   }, /*#__PURE__*/React.createElement("div", {
     className: "flex items-center gap-3"
   }, /*#__PURE__*/React.createElement("div", {
@@ -3600,26 +3665,11 @@ function Sidebar({
       color: "#8B93A7"
     }
   }, entity === "company" ? "千房株式会社" : "営業推進本部"))), /*#__PURE__*/React.createElement("div", {
-    className: "mt-4 grid grid-cols-2 gap-1 p-1 rounded-lg",
-    style: {
-      background: "rgba(255,255,255,0.06)"
-    }
-  }, [{
-    id: "hd",
-    label: "千房HD(株)"
-  }, {
-    id: "company",
-    label: "千房(株)"
-  }].map(t => /*#__PURE__*/React.createElement("button", {
-    key: t.id,
-    onClick: () => setEntity(t.id),
-    className: "text-xs py-1.5 rounded-md transition-colors",
-    style: {
-      background: entity === t.id ? "var(--accent)" : "transparent",
-      color: entity === t.id ? "#fff" : "#B7BECF",
-      fontWeight: entity === t.id ? 600 : 400
-    }
-  }, t.label))), /*#__PURE__*/React.createElement("div", {
+    className: "mt-4"
+  }, /*#__PURE__*/React.createElement(EntityToggle, {
+    entity: entity,
+    setEntity: setEntity
+  })), /*#__PURE__*/React.createElement("div", {
     className: "mt-3 text-[11px] px-3 py-2 rounded-md space-y-1.5",
     style: {
       background: "rgba(255,255,255,0.06)",
@@ -3628,36 +3678,20 @@ function Sidebar({
   }, /*#__PURE__*/React.createElement("div", null, "取込済み：", monthCount, "ヶ月分", latestLabel && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("br", null), "最新：", latestLabel)), /*#__PURE__*/React.createElement(SyncBadge, {
     syncStatus: syncStatus
   }))), /*#__PURE__*/React.createElement("div", {
-    className: "md:hidden px-3 pt-2"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "grid grid-cols-2 gap-1 p-1 rounded-lg",
-    style: {
-      background: "rgba(255,255,255,0.06)"
-    }
-  }, [{
-    id: "hd",
-    label: "千房HD(株)"
-  }, {
-    id: "company",
-    label: "千房(株)"
-  }].map(t => /*#__PURE__*/React.createElement("button", {
-    key: t.id,
-    onClick: () => setEntity(t.id),
-    className: "text-xs py-1.5 rounded-md transition-colors",
-    style: {
-      background: entity === t.id ? "var(--accent)" : "transparent",
-      color: entity === t.id ? "#fff" : "#B7BECF",
-      fontWeight: entity === t.id ? 600 : 400
-    }
-  }, t.label)))), /*#__PURE__*/React.createElement("nav", {
-    className: "flex md:flex-col flex-1 md:mt-2 md:px-3 gap-1 px-2 py-2 md:py-0 overflow-x-auto"
+    className: "md:hidden px-4 pb-2"
+  }, /*#__PURE__*/React.createElement(EntityToggle, {
+    entity: entity,
+    setEntity: setEntity,
+    size: "compact"
+  })), /*#__PURE__*/React.createElement("nav", {
+    className: "flex md:flex-col gap-1.5 px-3 pb-3 md:pb-0 md:mt-3 md:px-3 overflow-x-auto md:overflow-visible ledger-scroll"
   }, items.map(it => {
     const Icon = it.icon;
     const active = page === it.id;
     return /*#__PURE__*/React.createElement("button", {
       key: it.id,
       onClick: () => setPage(it.id),
-      className: "flex items-center gap-2.5 px-3.5 py-2.5 rounded-lg text-sm whitespace-nowrap transition-colors",
+      className: "flex items-center gap-2 shrink-0 px-3.5 py-2.5 rounded-lg text-[13px] md:text-sm whitespace-nowrap transition-colors",
       style: {
         background: active ? "var(--accent)" : "transparent",
         color: active ? "#fff" : "#B7BECF",
@@ -4406,6 +4440,16 @@ function ItemDetailPage({
       setDetailMonth(sortedKeys[sortedKeys.length - 1]);
     }
   }, [sortedKeys, detailMonth]);
+  const monthLines = monthsData[detailMonth]?.lines?.[selectedAccount] || {};
+  const monthLineSubKeysForEffect = Object.keys(monthLines);
+
+  // 細目グループが1つだけの場合は、タップせずに済むよう自動的に開いた状態にする
+  useEffect(() => {
+    if (monthLineSubKeysForEffect.length === 1) {
+      setOpenSubs(prev => prev.has(monthLineSubKeysForEffect[0]) ? prev : new Set([monthLineSubKeysForEffect[0]]));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedAccount, detailMonth, monthLineSubKeysForEffect.length]);
   if (sortedKeys.length === 0) {
     return /*#__PURE__*/React.createElement("div", {
       className: "fade-in rounded-xl p-10",
@@ -4451,7 +4495,6 @@ function ItemDetailPage({
     });
     downloadCsv(`項目別詳細_${acc}.csv`, csvRows);
   };
-  const monthLines = monthsData[detailMonth]?.lines?.[acc] || {};
   const monthLineSubKeys = Object.keys(monthLines);
   const monthLineTotal = monthLineSubKeys.reduce((sum, s) => sum + (monthLines[s] || []).reduce((ss, it) => ss + (it.amount || 0), 0), 0);
   const hasLineData = monthLineSubKeys.some(s => (monthLines[s] || []).length > 0);
@@ -5308,16 +5351,16 @@ function App() {
     entity: entity,
     setEntity: setEntity
   }), /*#__PURE__*/React.createElement("div", {
-    className: "flex-1 min-w-0 p-5 md:p-8"
+    className: "flex-1 min-w-0 p-4 sm:p-5 md:p-8"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "mb-6"
+    className: "mb-4 md:mb-6"
   }, /*#__PURE__*/React.createElement("h1", {
-    className: "font-display text-xl md:text-2xl",
+    className: "font-display text-lg md:text-2xl",
     style: {
       color: "var(--text-main)"
     }
   }, page === "dashboard" && "ダッシュボード", page === "budget" && "予算・実績比較", page === "pivot" && "科目別・月次一覧", page === "detail" && "項目別詳細", page === "upload" && "資料アップロード"), /*#__PURE__*/React.createElement("p", {
-    className: "text-xs mt-1",
+    className: "text-[11px] md:text-xs mt-1",
     style: {
       color: "var(--text-sub)"
     }
